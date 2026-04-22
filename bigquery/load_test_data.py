@@ -17,12 +17,10 @@ from dotenv import load_dotenv
 from google.cloud import bigquery
 
 
-DEFAULT_PROJECT_ID: Final[str] = "experimentiq-494001"
+DEFAULT_PROJECT_ID: Final[str] = os.getenv("BIGQUERY_PROJECT_ID", "")
 DEFAULT_DATASET: Final[str] = "experimentation"
-DEFAULT_SERVICE_ACCOUNT_PATH: Final[str] = (
-    "/Users/ishanjoshi/Documents/Experiementation/bigquery/experimentiq-494001-25cbf363afaa.json"
-)
-OWNER_EMAIL: Final[str] = "ishan@experimentiq.com"
+DEFAULT_SERVICE_ACCOUNT_PATH: Final[str] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+OWNER_EMAIL: Final[str] = os.getenv("OWNER_EMAIL", "owner@example.com")
 INSERT_BATCH_SIZE: Final[int] = 500
 RANDOM_SEED: Final[int] = 494001
 
