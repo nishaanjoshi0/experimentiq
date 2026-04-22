@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_experiment_events
+    description: Cleaned staging view for raw experiment exposure events.
+    columns:
+      - name: event_id
+        description: Unique event identifier.
+        tests:
+          - not_null
+          - unique
+      - name: experiment_id
+        description: Experiment identifier associated with the event.
+      - name: variation_id
+        description: Variation identifier associated with the event.
+      - name: user_id
+        description: Hashed user identifier for the event.
+      - name: event_date
+        description: Event date used for partitioning.
+      - name: timestamp
+        description: Full event timestamp.
+      - name: platform
+        description: Platform where the event occurred.
+      - name: country
+        description: ISO country code associated with the event.

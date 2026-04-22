@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_metric_observations
+    description: Cleaned staging view for raw per-user metric observations.
+    columns:
+      - name: observation_id
+        description: Unique metric observation identifier.
+        tests:
+          - not_null
+          - unique
+      - name: experiment_id
+        description: Experiment identifier for the observation.
+      - name: variation_id
+        description: Variation identifier for the observation.
+      - name: user_id
+        description: Hashed user identifier for the observation.
+      - name: metric_id
+        description: Metric identifier for the observation.
+      - name: value
+        description: Observed metric value.
+      - name: observation_date
+        description: Observation date used for partitioning.
+      - name: timestamp
+        description: Full observation timestamp.

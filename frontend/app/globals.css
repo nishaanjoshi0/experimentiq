@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #0a0a0f;
+  --surface: #111118;
+  --surface-elevated: #141420;
+  --border: #1e1e2e;
+  --primary: #6366f1;
+  --secondary: #22d3ee;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --text-primary: #f1f5f9;
+  --text-muted: #64748b;
+  scroll-behavior: smooth;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at top, rgba(99, 102, 241, 0.14), transparent 28%),
+    radial-gradient(circle at 80% 20%, rgba(34, 211, 238, 0.08), transparent 24%),
+    var(--background);
+  color: var(--text-primary);
+  @apply antialiased;
+}
+
+a {
+  @apply text-inherit no-underline;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232336;
+  border-radius: 9999px;
+  border: 2px solid var(--background);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2f2f49;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.surface-panel {
+  background: linear-gradient(180deg, rgba(17, 17, 24, 0.95), rgba(11, 11, 17, 0.98));
+  border: 1px solid var(--border);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+    0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+.status-pill {
+  @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium;
+  font-family: var(--font-mono), monospace;
+}
+
+.metric-mono {
+  font-family: var(--font-mono), monospace;
+}

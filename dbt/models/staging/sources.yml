@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: experimentiq_raw
+    description: Raw ExperimentIQ tables stored in BigQuery.
+    database: experimentiq-494001
+    schema: experimentation
+    tables:
+      - name: experiment_events
+        description: Raw user-level experiment exposure events.
+      - name: metric_observations
+        description: Raw per-user metric observations.
+      - name: variations
+        description: Raw experiment variation definitions.

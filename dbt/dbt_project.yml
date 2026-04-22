@@ -1,0 +1,16 @@
+name: experimentiq
+version: 1.0.0
+config-version: 2
+
+profile: experimentiq
+
+model-paths: ["models"]
+test-paths: ["tests"]
+packages-install-path: dbt_packages
+
+models:
+  experimentiq:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

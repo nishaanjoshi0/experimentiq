@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: experiment_summary
+    description: One row per experiment with core event-level summary statistics.
+    columns:
+      - name: experiment_id
+        description: Unique experiment identifier.
+        tests:
+          - not_null
+          - unique
+      - name: total_users
+        description: Distinct user count across all variations.
+      - name: total_events
+        description: Total number of events recorded for the experiment.
+      - name: start_date
+        description: Earliest event date for the experiment.
+      - name: end_date
+        description: Latest event date for the experiment.
+      - name: days_running
+        description: Number of days between the first and last observed event dates.
+      - name: variation_count
+        description: Number of distinct variations observed for the experiment.

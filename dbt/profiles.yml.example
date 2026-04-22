@@ -1,0 +1,13 @@
+# Copy this file to ~/.dbt/profiles.yml before running dbt.
+experimentiq:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account-json
+      project: "{{ env_var('BIGQUERY_PROJECT_ID') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET', 'experimentation') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      location: US
+      priority: interactive
+      threads: 4

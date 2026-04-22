@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: variation_metrics
+    description: One row per experiment and variation with aggregated event and metric performance.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - experiment_id
+            - variation_id
+    columns:
+      - name: experiment_id
+        description: Experiment identifier for the variation aggregate.
+        tests:
+          - not_null
+      - name: variation_id
+        description: Unique variation identifier.
+        tests:
+          - not_null
+      - name: user_count
+        description: Distinct users assigned to the variation.
+      - name: event_count
+        description: Total events recorded for the variation.
+      - name: avg_metric_value
+        description: Average metric value observed for the variation.
+      - name: conversion_rate
+        description: Ratio of users with at least one metric observation to total users in the variation.

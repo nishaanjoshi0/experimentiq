@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: experiment_health
+    description: Per-experiment health indicators derived from summary event activity.
+    columns:
+      - name: experiment_id
+        description: Unique experiment identifier.
+        tests:
+          - not_null
+          - unique
+      - name: total_users
+        description: Distinct user count across all variations.
+      - name: variation_count
+        description: Number of distinct variations observed for the experiment.
+      - name: has_minimum_sample
+        description: True when the experiment has at least 100 total users.
+      - name: is_data_fresh
+        description: True when the latest event date is within the last 24 hours.
+      - name: has_multiple_variations
+        description: True when the experiment has at least two variations.
+      - name: health_status
+        description: Overall experiment health classification.
+        tests:
+          - accepted_values:
+              values: ['healthy', 'warning', 'critical']
