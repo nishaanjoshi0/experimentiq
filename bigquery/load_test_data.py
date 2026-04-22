@@ -22,7 +22,7 @@ DEFAULT_DATASET: Final[str] = "experimentation"
 DEFAULT_SERVICE_ACCOUNT_PATH: Final[str] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 OWNER_EMAIL: Final[str] = os.getenv("OWNER_EMAIL", "owner@example.com")
 INSERT_BATCH_SIZE: Final[int] = 500
-RANDOM_SEED: Final[int] = 494001
+RANDOM_SEED: Final[int] = 42
 
 
 @dataclass(frozen=True)
