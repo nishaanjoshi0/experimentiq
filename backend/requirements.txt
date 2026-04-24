@@ -12,3 +12,4 @@ langgraph
 anthropic
 numpy
 scipy
+pandas

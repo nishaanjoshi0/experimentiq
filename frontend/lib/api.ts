@@ -147,3 +147,155 @@ export async function getMonitoringReport(id: string): Promise<MonitoringReport>
   });
   return parseJsonResponse<MonitoringReport>(response);
 }
+
+export interface ExperimentOpportunity {
+  rank: number;
+  title: string;
+  hypothesis: string;
+  primary_metric: string;
+  estimated_lift_low_pct: number;
+  estimated_lift_high_pct: number;
+  risk_level: string;
+  effort_level: string;
+  evidence: string;
+  expected_impact_score: number;
+  segment_to_watch: string;
+}
+
+export interface OpportunityReport {
+  opportunities: ExperimentOpportunity[];
+  data_summary: Record<string, unknown>;
+  analysis_context: string;
+  generated_at: string;
+  confidence: number;
+  data_source: string;
+}
+
+export interface OpportunityRequest {
+  company_description?: string;
+  current_metrics?: Record<string, number>;
+  data_source: "demo" | "csv";
+  csv_content?: string;
+}
+
+export async function discoverOpportunities(
+  request: OpportunityRequest
+): Promise<OpportunityReport> {
+  const response = await fetch("/api/opportunities", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonResponse<OpportunityReport>(response);
+}
+
+export interface DatasetMeta {
+  id: string;
+  name: string;
+  description: string;
+  size: string;
+  use_case: string;
+  download_url: string;
+  download_instructions: string;
+  columns_hint: string;
+  industry: string;
+}
+
+export interface DatasetAnalyzeRequest {
+  csv_content: string;
+  dataset_type?: string;
+  company_description?: string;
+  current_metrics?: Record<string, number>;
+}
+
+export interface ConnectionStatus {
+  connected: boolean;
+  email?: string;
+  property_id?: string;
+  connected_at?: string;
+}
+
+export interface StartExperimentRequest {
+  name: string;
+  hypothesis: string;
+  description?: string;
+  tags?: string[];
+}
+
+export interface StartExperimentResponse {
+  experiment_id: string;
+  name: string;
+  growthbook_url: string;
+}
+
+export async function fetchDatasets(): Promise<DatasetMeta[]> {
+  const response = await fetch("/api/datasets", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseJsonResponse<DatasetMeta[]>(response);
+}
+
+export async function analyzeDataset(
+  request: DatasetAnalyzeRequest
+): Promise<OpportunityReport> {
+  const response = await fetch("/api/datasets/analyze", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonResponse<OpportunityReport>(response);
+}
+
+export async function connectGA4(): Promise<{ auth_url: string }> {
+  const response = await fetch("/api/auth/google", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseJsonResponse<{ auth_url: string }>(response);
+}
+
+export async function getGA4Status(): Promise<ConnectionStatus> {
+  const response = await fetch("/api/auth/status", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseJsonResponse<ConnectionStatus>(response);
+}
+
+export async function disconnectGA4(): Promise<ConnectionStatus> {
+  const response = await fetch("/api/auth/status", {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return parseJsonResponse<ConnectionStatus>(response);
+}
+
+export async function getGA4Recommendations(
+  payload: { company_description?: string; current_metrics?: Record<string, number> }
+): Promise<OpportunityReport> {
+  const response = await fetch("/api/analytics", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<OpportunityReport>(response);
+}
+
+export async function startExperiment(
+  request: StartExperimentRequest
+): Promise<StartExperimentResponse> {
+  const response = await fetch("/api/experiments/start", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseJsonResponse<StartExperimentResponse>(response);
+}

@@ -101,6 +101,28 @@ class GrowthBookClient:
         response = await self._request("GET", METRICS_ENDPOINT)
         return self._extract_list_payload(response, "metrics")
 
+    async def create_experiment(
+        self,
+        name: str,
+        hypothesis: str,
+        description: str = "",
+        tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a new experiment in GrowthBook and return the created object."""
+        payload: dict[str, Any] = {
+            "name": name,
+            "hypothesis": hypothesis,
+            "description": description,
+            "tags": tags or ["experimentiq"],
+            "variations": [
+                {"key": "0", "name": "Control", "description": ""},
+                {"key": "1", "name": "Treatment", "description": ""},
+            ],
+        }
+        response = await self._request("POST", EXPERIMENTS_ENDPOINT, json=payload)
+        self._raise_for_error(response)
+        return self._extract_dict_payload(response, "experiment")
+
     async def close(self) -> None:
         """Close the underlying async HTTP client."""
         await self._client.aclose()

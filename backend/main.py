@@ -14,10 +14,15 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.analytics import router as analytics_router
+from api.auth_google import router as auth_google_router
+from api.datasets_api import router as datasets_router
 from api.experiments import router as experiments_router
 from api.health import router as health_router
 from api.interpretation import router as interpretation_router
 from api.monitoring import router as monitoring_router
+from api.opportunities import router as opportunities_router
+from api.start_experiment import router as start_experiment_router
 from middleware.auth import ClerkAuthMiddleware
 from middleware.logging import StructuredLoggingMiddleware, configure_logging
 from middleware.rate_limit import limiter
@@ -74,8 +79,13 @@ def create_app() -> FastAPI:
     app.add_middleware(StructuredLoggingMiddleware)
 
     api_v1_router.include_router(experiments_router)
+    api_v1_router.include_router(start_experiment_router)
     api_v1_router.include_router(monitoring_router)
     api_v1_router.include_router(interpretation_router)
+    api_v1_router.include_router(opportunities_router)
+    api_v1_router.include_router(analytics_router)
+    api_v1_router.include_router(auth_google_router)
+    api_v1_router.include_router(datasets_router)
 
     app.include_router(api_v1_router)
     app.include_router(health_router, prefix=HEALTH_PREFIX)
