@@ -122,15 +122,15 @@ export default function SelectPage() {
           accent="cyan"
         />
         <SelectionCard
-          href="/experiments"
+          href="/interpret"
           badge="Existing experiment"
-          title="Evaluate an experiment"
-          description="Frame a new hypothesis, monitor a running experiment for SRM and novelty effects, or get a ship/iterate/abandon recommendation on completed results."
+          title="Interpret experiment results"
+          description="Upload raw assignment and event logs. The AI validates integrity, computes stats, and tells the full story — what moved, what didn't, and whether to ship."
           bullets={[
-            "Hypothesis → structured design",
-            "SRM detection and sequential testing",
-            "Ship / iterate / abandon with evidence",
-            "Defensible enough to put in a postmortem",
+            "Raw log ingestion — assignment + event CSVs",
+            "SRM check, novelty detection, significance",
+            "Full narrative interpretation",
+            "Ship / don't ship / run longer verdict",
           ]}
           cta="Evaluate experiment →"
           accent="emerald"

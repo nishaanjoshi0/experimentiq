@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAuthToken } from "@/lib/auth";
-
 const DEFAULT_FASTAPI_BASE_URL = "http://localhost:8000";
 
 export async function GET(request: NextRequest) {
@@ -13,29 +11,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/analytics?error=no_code", request.url));
   }
 
-  const token = await getAuthToken();
-  if (!token) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
-  }
+  try {
+    const response = await fetch(
+      new URL("/api/v1/auth/google/callback", process.env.FASTAPI_BASE_URL ?? DEFAULT_FASTAPI_BASE_URL),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, state }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      }
+    );
 
-  const response = await fetch(
-    new URL(
-      "/api/v1/auth/google/callback",
-      process.env.FASTAPI_BASE_URL ?? DEFAULT_FASTAPI_BASE_URL
-    ),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ code, state }),
-      cache: "no-store",
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const detail = (body as { detail?: string }).detail ?? "oauth_failed";
+      return NextResponse.redirect(new URL(`/analytics?error=${encodeURIComponent(detail)}`, request.url));
     }
-  );
-
-  if (!response.ok) {
-    return NextResponse.redirect(new URL("/analytics?error=oauth_failed", request.url));
+  } catch {
+    return NextResponse.redirect(new URL("/analytics?error=callback_timeout", request.url));
   }
 
   return NextResponse.redirect(new URL("/analytics?connected=true", request.url));

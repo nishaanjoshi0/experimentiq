@@ -95,6 +95,7 @@ class OpportunityState(TypedDict):
     failure_reason: str
     messages: list[str]
     _prebuilt_summary: AnalyticsSummary | None
+    _parsed_opportunities: dict[str, Any]
 
 
 def get_anthropic_client() -> AsyncAnthropic:
@@ -373,10 +374,7 @@ def _fallback_report(state: OpportunityState) -> OpportunityReport:
     return OpportunityReport(
         opportunities=[],
         data_summary={"error": reason},
-        analysis_context=(
-            f"The opportunity agent could not complete analysis. Reason: {reason} "
-            "Try using the demo dataset or check your CSV format."
-        ),
+        analysis_context=f"The opportunity agent could not complete analysis. Reason: {reason}",
         generated_at=datetime.now(tz=timezone.utc).isoformat(),
         confidence=0.0,
         data_source=state.get("data_source", "unknown"),

@@ -3,8 +3,11 @@
 .env.local
 .env.*.local
 
-# Service account keys
-*.json
+# Service account keys (never commit these)
+*service-account*.json
+*credentials*.json
+*serviceaccount*.json
+bigquery/*.json
 
 # Python
 __pycache__/
@@ -30,3 +33,13 @@ dbt/target/
 # IDE
 .vscode/
 .idea/
+
+# Claude session files
+.claude/
+
+# Temp files
+tmp/
+~$*
+
+# PowerPoint exports (use shared drive for large binaries)
+*.pptx

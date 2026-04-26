@@ -17,6 +17,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.analytics import router as analytics_router
 from api.auth_google import router as auth_google_router
 from api.datasets_api import router as datasets_router
+from api.experiment_interpret import router as experiment_interpret_router
 from api.experiments import router as experiments_router
 from api.health import router as health_router
 from api.interpretation import router as interpretation_router
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.add_middleware(StructuredLoggingMiddleware)
 
     api_v1_router.include_router(experiments_router)
+    api_v1_router.include_router(experiment_interpret_router)
     api_v1_router.include_router(start_experiment_router)
     api_v1_router.include_router(monitoring_router)
     api_v1_router.include_router(interpretation_router)

@@ -290,8 +290,8 @@ def _build_raw_chunks(summary: AnalyticsSummary) -> list[str]:
         chunks.append(
             f"Device segment {device.segment_name}: {device.sessions:,} sessions, "
             f"{device.conversion_rate:.1%} conversion rate. "
-            f"Bounce rate: {device.extra.get('bounce_rate', 'n/a'):.0%}. "
-            f"Avg session: {device.extra.get('avg_session_duration_sec', 'n/a')}s."
+            + (f"Bounce rate: {device.extra['bounce_rate']:.0%}. " if "bounce_rate" in device.extra else "")
+            + (f"Avg session: {device.extra['avg_session_duration_sec']}s." if "avg_session_duration_sec" in device.extra else "")
         )
 
     funnel_text = " → ".join(

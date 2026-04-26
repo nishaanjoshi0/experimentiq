@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from agents.opportunity_agent import OpportunityReport, run_opportunity_agent
 from middleware.rate_limit import llm_limit
-from services.dataset_adapters import DATASET_REGISTRY, adapt_dataset
+from services.csv_ingestion import ingest_csv_universal
+from services.dataset_adapters import DATASET_REGISTRY
 
 
 DATASETS_PREFIX = "/datasets"
@@ -25,7 +26,6 @@ class DatasetAnalyzeRequest(BaseModel):
 
 @router.get("", response_model=list[dict[str, Any]])
 async def list_datasets() -> list[dict[str, Any]]:
-    """Return the registry of pre-defined datasets with download links."""
     return DATASET_REGISTRY
 
 
@@ -35,7 +35,6 @@ async def analyze_dataset(
     request: Request,
     payload: DatasetAnalyzeRequest,
 ) -> OpportunityReport:
-    """Run the opportunity agent on an uploaded dataset CSV."""
     _ = request
     if not payload.csv_content.strip():
         raise HTTPException(
@@ -44,7 +43,10 @@ async def analyze_dataset(
         )
 
     try:
-        analytics_summary = adapt_dataset(payload.csv_content, payload.dataset_type)
+        analytics_summary = await ingest_csv_universal(
+            payload.csv_content,
+            payload.company_description,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

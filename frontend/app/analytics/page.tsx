@@ -15,7 +15,7 @@ import {
   type OpportunityReport,
 } from "@/lib/api";
 
-type PageState = "platform_select" | "connecting" | "connected" | "analyzing" | "results" | "error";
+type PageState = "loading" | "platform_select" | "connecting" | "connected" | "analyzing" | "results" | "error";
 
 const COMING_SOON_PLATFORMS = [
   { name: "Mixpanel", logo: "M", color: "rgba(99,102,241,0.15)" },
@@ -25,17 +25,41 @@ const COMING_SOON_PLATFORMS = [
 ];
 
 export default function AnalyticsPage() {
-  const [pageState, setPageState] = useState<PageState>("platform_select");
+  const [pageState, setPageState] = useState<PageState>("loading");
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [report, setReport] = useState<OpportunityReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExperimentOpportunity | null>(null);
 
   useEffect(() => {
-    void getGA4Status().then((s) => {
-      setStatus(s);
-      if (s.connected) setPageState("connected");
-    }).catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get("error");
+
+    if (errorParam) {
+      const messages: Record<string, string> = {
+        oauth_failed: "Google OAuth failed — token exchange was rejected. Check your OAuth credentials.",
+        no_code: "No authorization code received from Google.",
+        callback_timeout: "Connection timed out while exchanging tokens with Google. Try again.",
+      };
+      setError(messages[errorParam] ?? `OAuth error: ${errorParam}`);
+      setPageState("error");
+      window.history.replaceState({}, "", "/analytics");
+      return;
+    }
+
+    if (params.get("connected") === "true") {
+      window.history.replaceState({}, "", "/analytics");
+    }
+
+    void getGA4Status()
+      .then((s) => {
+        setStatus(s);
+        setPageState(s.connected ? "connected" : "platform_select");
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to check GA4 connection status.");
+        setPageState("error");
+      });
   }, []);
 
   async function handleConnectGA4() {
@@ -91,6 +115,12 @@ export default function AnalyticsPage() {
           </Link>
         </div>
       </header>
+
+      {pageState === "loading" && (
+        <section className="surface-panel flex items-center justify-center rounded-3xl p-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--secondary)]" />
+        </section>
+      )}
 
       {(pageState === "platform_select" || pageState === "connecting") && (
         <section className="space-y-6">
@@ -195,7 +225,7 @@ export default function AnalyticsPage() {
           <div className="rounded-3xl border border-[rgba(239,68,68,0.3)] bg-[rgba(239,68,68,0.08)] p-5 text-sm text-[var(--danger)]">
             {error}
           </div>
-          <button onClick={() => setPageState("connected")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <button onClick={() => setPageState("platform_select")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">
             ← Try again
           </button>
         </section>
