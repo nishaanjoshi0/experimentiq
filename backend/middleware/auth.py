@@ -20,12 +20,13 @@ from starlette.responses import Response
 AUTHORIZATION_HEADER: Final[str] = "Authorization"
 BEARER_PREFIX: Final[str] = "Bearer "
 HEALTH_PATH: Final[str] = "/health"
-DOCS_PATH: Final[str] = "/docs"
-OPENAPI_PATH: Final[str] = "/openapi.json"
-REDOC_PATH: Final[str] = "/redoc"
 OAUTH_CALLBACK_PATH: Final[str] = "/api/v1/auth/google/callback"
-PUBLIC_PATHS: Final[frozenset[str]] = frozenset({HEALTH_PATH, DOCS_PATH, OPENAPI_PATH, REDOC_PATH, OAUTH_CALLBACK_PATH})
+# Docs paths are only public in development. In production, FastAPI is configured
+# with docs_url=None/redoc_url=None/openapi_url=None so these paths return 404
+# before they ever reach the auth middleware — but we do not whitelist them here.
+PUBLIC_PATHS: Final[frozenset[str]] = frozenset({HEALTH_PATH, OAUTH_CALLBACK_PATH})
 JWKS_URL_ENV_VAR: Final[str] = "CLERK_JWKS_URL"
+CLERK_ISSUER_ENV_VAR: Final[str] = "CLERK_ISSUER_URL"
 JWKS_CACHE_TTL_SECONDS: Final[int] = 300
 STATUS_UNAUTHORIZED: Final[int] = 401
 STATUS_FORBIDDEN: Final[int] = 403
@@ -64,6 +65,7 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         """Initialize the middleware with empty JWKS cache state."""
         super().__init__(app)
         self._jwks_url = get_jwks_url()
+        self._issuer = os.getenv(CLERK_ISSUER_ENV_VAR)
         self._jwks: dict[str, Any] = {}
         self._jwks_loaded_at = 0.0
 
@@ -104,11 +106,23 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         jwk = self._find_signing_key(jwks, key_id)
         public_key = RSAAlgorithm.from_jwk(json.dumps(jwk))
 
+        # Clerk JWTs do not set an `aud` claim by default, so audience
+        # verification is skipped. Instead we verify the `iss` claim against
+        # CLERK_ISSUER_URL (e.g. https://your-domain.clerk.accounts.dev).
+        # This ensures a token issued for a different Clerk application is rejected.
+        decode_options: dict[str, Any] = {"verify_aud": False}
+        decode_kwargs: dict[str, Any] = {}
+        if self._issuer:
+            decode_kwargs["issuer"] = self._issuer
+        else:
+            decode_options["verify_iss"] = False
+
         return jwt.decode(
             token,
             key=public_key,
             algorithms=ALGORITHMS,
-            options={"verify_aud": False},
+            options=decode_options,
+            **decode_kwargs,
         )
 
     async def _get_jwks(self) -> dict[str, Any]:

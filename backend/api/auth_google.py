@@ -12,6 +12,8 @@ from pydantic import BaseModel
 
 from services.oauth_store import (
     GA4Connection,
+    consume_oauth_nonce,
+    create_oauth_nonce,
     delete_ga4_connection,
     get_ga4_connection,
     save_ga4_connection,
@@ -65,6 +67,11 @@ async def initiate_google_oauth(request: Request) -> InitiateResponse:
     client_id, _, redirect_uri = _oauth_config()
     user_id = getattr(request.state, "user_id", "anonymous")
 
+    # Issue a server-side nonce as the state parameter.
+    # The nonce maps to the user_id and is validated on callback —
+    # an attacker cannot forge a state value to hijack another user's connection.
+    nonce = create_oauth_nonce(user_id)
+
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -72,7 +79,7 @@ async def initiate_google_oauth(request: Request) -> InitiateResponse:
         "scope": SCOPES,
         "access_type": "offline",
         "prompt": "consent",
-        "state": user_id,
+        "state": nonce,
     }
     auth_url = f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
     return InitiateResponse(auth_url=auth_url)
@@ -84,7 +91,17 @@ async def handle_google_callback(
 ) -> ConnectionStatus:
     """Exchange auth code for tokens and persist the GA4 connection."""
     client_id, client_secret, redirect_uri = _oauth_config()
-    user_id = payload.state or getattr(request.state, "user_id", "anonymous")
+
+    # Validate the state nonce server-side.
+    # consume_oauth_nonce checks the nonce exists, hasn't expired, and deletes it
+    # on first use — replay attacks and forged state values both return None.
+    user_id = consume_oauth_nonce(payload.state or "")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state parameter.",
+        )
+
     property_id = os.getenv("GA4_DEMO_PROPERTY_ID", "213025502")
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -115,7 +132,7 @@ async def handle_google_callback(
         except Exception:
             pass
 
-    connection = GA4Connection(
+    connection = GA4Connection.create(
         access_token=tokens["access_token"],
         refresh_token=tokens.get("refresh_token"),
         property_id=property_id,

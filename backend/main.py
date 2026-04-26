@@ -37,6 +37,7 @@ DEVELOPMENT_ENVIRONMENT: Final[str] = "development"
 ENVIRONMENT_ENV_VAR: Final[str] = "ENVIRONMENT"
 DEFAULT_ENVIRONMENT: Final[str] = DEVELOPMENT_ENVIRONMENT
 STARTUP_LOG_MESSAGE: Final[str] = "ExperimentIQ API started"
+DEFAULT_DEV_ORIGIN: Final[str] = "http://localhost:3001"
 
 
 def load_environment() -> str:
@@ -60,20 +61,38 @@ def create_app() -> FastAPI:
     environment = load_environment()
     configure_logging()
 
-    app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)
+    is_dev = environment == DEVELOPMENT_ENVIRONMENT
+
+    # Disable interactive docs in production — never expose the full API schema publicly.
+    docs_url = "/docs" if is_dev else None
+    redoc_url = "/redoc" if is_dev else None
+    openapi_url = "/openapi.json" if is_dev else None
+
+    app = FastAPI(
+        title=APP_TITLE,
+        version=APP_VERSION,
+        lifespan=lifespan,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
+    )
     app.state.environment = environment
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     api_v1_router = APIRouter(prefix=API_V1_PREFIX)
 
-    if environment == DEVELOPMENT_ENVIRONMENT:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=False,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    # Always require an explicit origins list — never allow wildcard.
+    # In dev, defaults to localhost:3001 if ALLOWED_ORIGINS is not set.
+    # In production, ALLOWED_ORIGINS must be set or the middleware rejects all cross-origin requests.
+    raw_origins = os.getenv("ALLOWED_ORIGINS", DEFAULT_DEV_ORIGIN if is_dev else "")
+    allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ClerkAuthMiddleware)

@@ -261,13 +261,34 @@ Create `backend/.env`:
 ```
 ENVIRONMENT=development
 ANTHROPIC_API_KEY=your-key
+
+# Clerk — CLERK_ISSUER_URL is your Clerk Frontend API URL (e.g. https://xxxx.clerk.accounts.dev)
 CLERK_JWKS_URL=https://your-clerk-domain/.well-known/jwks.json
+CLERK_ISSUER_URL=https://your-clerk-domain
 CLERK_SECRET_KEY=your-clerk-secret
+
+# GrowthBook
 GROWTHBOOK_API_URL=http://localhost:3100
 GROWTHBOOK_API_KEY=your-growthbook-key
-GOOGLE_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/callback/google
+
+# Google OAuth (GA4)
+GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3001/api/auth/callback/google
+
+# OAuth token encryption — generate with:
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+OAUTH_ENCRYPTION_KEY=your-fernet-key
+
+# CORS — comma-separated list of allowed origins (no wildcards)
+ALLOWED_ORIGINS=http://localhost:3001
+```
+
+Create a `.env` file at the project root for Docker Compose (MongoDB credentials):
+
+```
+MONGO_USERNAME=your-mongo-username
+MONGO_PASSWORD=your-strong-mongo-password
 ```
 
 ```bash
