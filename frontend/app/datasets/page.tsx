@@ -8,6 +8,8 @@ import { OpportunityCard } from "@/components/OpportunityCard";
 import {
   analyzeDataset,
   fetchDatasets,
+  getExperimentPlatformStatuses,
+  type AllExperimentPlatformStatus,
   type DatasetMeta,
   type ExperimentOpportunity,
   type OpportunityReport,
@@ -24,6 +26,7 @@ export default function DatasetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<ExperimentOpportunity | null>(null);
   const [ga4Connected, setGa4Connected] = useState(false);
+  const [expPlatformStatuses, setExpPlatformStatuses] = useState<AllExperimentPlatformStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -32,6 +35,7 @@ export default function DatasetsPage() {
       .then((r) => r.json())
       .then((d: { connected?: boolean }) => setGa4Connected(d.connected ?? false))
       .catch(() => {});
+    void getExperimentPlatformStatuses().then(setExpPlatformStatuses).catch(() => {});
   }, []);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -207,6 +211,11 @@ export default function DatasetsPage() {
         <ExperimentDetailModal
           opportunity={selectedOpportunity}
           ga4Connected={ga4Connected}
+          connectedPlatforms={{
+            growthbook: true,
+            launchdarkly: expPlatformStatuses?.launchdarkly?.connected ?? false,
+            statsig: expPlatformStatuses?.statsig?.connected ?? false,
+          }}
           onClose={() => setSelectedOpportunity(null)}
         />
       )}

@@ -1,54 +1,274 @@
 # ExperimentIQ
 
-AI-powered experimentation intelligence platform. Three paths: discover experiment opportunities from behavioral data, interpret completed experiments from raw logs, or connect a live analytics platform for real-time recommendations. Produces defensible, statistically-grounded outputs that are specific enough to share directly with a product manager or engineering lead.
+A multi-agent AI system for product experimentation. Four specialized LangGraph agents — each with its own typed state, narrow task, and stateless Claude Sonnet call — cover the full experiment lifecycle: discover opportunities from behavioral data, design statistically sound tests, monitor running experiments daily, and interpret results with a defensible verdict.
 
-Built for growth teams at Series A/B companies who run experiments but lack a dedicated internal experimentation platform.
-
----
-
-## The Problem
-
-Most experiment platforms solve the mechanics well. Randomization, dashboards, p-values. What they do not solve is the judgment layer.
-
-- A PM types "improve onboarding" into a ticket and a DS has to figure out what that actually means as an experiment
-- An experiment finishes and someone has to decide whether the guardrail metric degradation is acceptable
-- Results come back surprising and nobody knows which segment to cut first
-
-ExperimentIQ handles those parts. It sits on top of GrowthBook, uses Claude Sonnet as the reasoning layer, and produces outputs that are defensible enough to put in a Slack message or a postmortem.
+Built for growth teams at Series A/B startups who had the experiment platforms (GrowthBook, LaunchDarkly, Statsig) and the analytics (GA4, Amplitude, Mixpanel) but lacked the data science layer to connect those signals, run rigorous tests, and make defensible ship/don't-ship decisions from the results.
 
 ---
 
-## What It Does
+## The Architecture
 
-Three paths from the landing hub at `/select`:
+This is the core of the system. Everything else — the UI, the integrations, the daily email — exists to wire data into and out of these four agents.
 
-### Path 1 — Opportunity Discovery from Datasets
+> **[▶ Open Interactive Architecture Diagram](architecture.html)** — animated data-flow diagram showing all four agents, their internal node pipelines, inputs, outputs, compute layer, and infrastructure. Open in any browser.
 
-Upload a behavioral dataset (or pick from four pre-built ones) and get ranked experiment opportunities grounded in your actual data.
+The system is a left-to-right pipeline: analytics data enters on the left, passes through one or more LangGraph agents in the center, and produces structured Pydantic outputs on the right. All agents share a compute layer (Claude Sonnet + NumPy/SciPy stats engine) below them.
 
-- Supported datasets: Google Merchandise Store, Olist E-Commerce, Instacart, Telco Churn
-- Upload any CSV — Claude normalizes it automatically, no per-dataset adapter code
-- LangGraph agent scores and ranks opportunities by estimated impact
-- Each opportunity includes a hypothesis, primary metric, guardrails, and lift estimate
-- One click to frame and start the experiment in GrowthBook
+```
+┌─────────────────┐          ┌──────────────────────────────────────────────────┐          ┌──────────────────────┐
+│   Data Inputs   │          │            LangGraph Agent Pipeline               │          │       Outputs        │
+│                 │          │                                                    │          │                      │
+│  GA4            │ ───────► │  ① Opportunity Agent  (5 nodes · RAG)            │ ───────► │  Ranked Opportunities│
+│  Amplitude      │          │     ingest → rag → candidates → rank → report     │          │                      │
+│  Mixpanel       │          │                                                    │          │                      │
+│  CSV / Datasets │          │  ② Framing Agent      (4 nodes)                  │ ───────► │  ExperimentDesign    │
+│                 │          │     parse → constraints → design → validate        │          │                      │
+│                 │          │                                                    │          │                      │
+│                 │          │  ③ Monitoring Agent   (3 nodes · automated daily) │ ───────► │  Daily Email         │
+│                 │          │     fetch → stat_checks → synthesize              │          │  via SendGrid        │
+│                 │          │                                                    │          │                      │
+│  Assignment Log │ ───────► │  ④ Interpretation Agent (4 nodes)                │ ───────► │  Ship / Don't Ship   │
+│  + Event Log    │          │     fetch → significance_tests → interpret → build│          │  / Run Longer        │
+└─────────────────┘          │                                                    │          └──────────────────────┘
+                             │          ↑ all agents call ↓                      │
+                             │  ┌─────────────────────┐  ┌─────────────────────┐│
+                             │  │  Claude Sonnet       │  │  Stats Engine       ││
+                             │  │  stateless per node  │  │  NumPy · SciPy      ││
+                             │  └─────────────────────┘  └─────────────────────┘│
+                             └──────────────────────────────────────────────────┘
+```
 
-### Path 2 — Live Analytics via GA4
+---
 
-Connect Google Analytics 4 via OAuth 2.0 and pull live behavioral data directly.
+## The Four Agents
 
-- Real funnel + segment analysis grounded in your actual traffic
-- Graceful fallback to demo data if the GA4 quota is exceeded
-- Recommendations start directly in GrowthBook
-- Mixpanel and Amplitude support planned
+### Agent 1 — Opportunity Discovery
 
-### Path 3 — Post-Experiment Interpretation
+**File:** `backend/agents/opportunity_agent.py`
 
-Upload raw assignment and event logs. The AI validates integrity, computes all statistics, and tells the full story.
+Five-node LangGraph pipeline. Takes a behavioral dataset and produces ranked, hypothesis-backed experiment opportunities with lift estimates grounded in the actual data.
 
-- Upload two CSVs: assignment log (user_id, variant, timestamp) + event log (user_id, event_name, timestamp, revenue)
-- SRM detection, novelty detection, significance testing, revenue analysis
-- Full narrative interpretation with key evidence, risks, and follow-up cuts
-- Ship / Don't Ship / Run Longer verdict with confidence score
+```
+ingest_and_analyze → retrieve_context → generate_candidates → score_and_rank → build_report
+       ↓ (fetch_failed)                                                              ↑
+       └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Node | Claude's role | Output added to state |
+|---|---|---|
+| `ingest_and_analyze` | Analyze funnel drop-offs and segment gaps | `funnel_analysis`, `segment_analysis` |
+| `retrieve_context` | — (vector store RAG query, no LLM) | `rag_context` (top 10 chunks) |
+| `generate_candidates` | Generate 8–10 specific, data-grounded hypotheses | `opportunity_candidates` |
+| `score_and_rank` | Score by impact × evidence × effort, rank top 5, output JSON | `scored_opportunities` |
+| `build_report` | — (Pydantic assembly, no LLM) | `OpportunityReport` |
+
+**State schema** (`OpportunityState` TypedDict):
+```python
+company_description: str
+current_metrics: dict[str, float]
+data_source: str                      # "demo" | "csv" | "ga4" | "amplitude"
+csv_content: str | None
+analytics_summary: AnalyticsSummary | None
+vector_store: SimpleVectorStore | None
+funnel_analysis: str
+segment_analysis: str
+rag_context: list[str]
+opportunity_candidates: str
+scored_opportunities: str
+report: OpportunityReport | None
+fetch_failed: bool
+failure_reason: str
+```
+
+**Output model:**
+```python
+class ExperimentOpportunity(BaseModel):
+    rank: int
+    title: str
+    hypothesis: str
+    primary_metric: str
+    estimated_lift_low_pct: float
+    estimated_lift_high_pct: float
+    risk_level: str           # "low" | "medium" | "high"
+    effort_level: str         # "low" | "medium" | "high"
+    evidence: str             # the specific data point that justifies this
+    expected_impact_score: float   # 0.0–1.0
+    segment_to_watch: str
+```
+
+**What makes this AI engineering:** Claude doesn't just "give ideas." Node 1 makes two separate Claude calls — one for funnel analysis, one for segment analysis — each scoped to a single analytical question. Node 2 uses a vector store (cosine similarity over pre-computed embeddings) to retrieve the most relevant data chunks before Claude sees them in Node 3. Node 4 scores with explicit criteria (gap size, evidence quality, effort ratio) and is retried once on JSON parse failure. The final node uses Pydantic to validate every opportunity field — malformed outputs are dropped, not silently passed through.
+
+---
+
+### Agent 2 — Experiment Framing
+
+**File:** `backend/agents/framing_agent.py`
+
+Four-node pipeline. Takes a raw hypothesis string and returns a structured `ExperimentDesign` with everything a DS would need to set up the experiment correctly.
+
+```
+parse_hypothesis → retrieve_constraints → design_experiment → validate_design
+```
+
+| Node | Claude's role | Output |
+|---|---|---|
+| `parse_hypothesis` | Extract intent, proposed metrics, and runtime hints from free text | `intent`, `proposed_metrics`, `runtime_estimate` |
+| `retrieve_constraints` | — (context lookup, no LLM) | `constraints` |
+| `design_experiment` | Produce full experiment design as structured JSON | `ExperimentDesign` (draft) |
+| `validate_design` | Check for statistical validity — MDE feasibility, guardrail coverage | `ExperimentDesign` (validated) |
+
+**Output model:**
+```python
+class ExperimentDesign(BaseModel):
+    hypothesis: str
+    primary_metric: str
+    metric_rationale: str
+    guardrail_metrics: list[str]
+    unit_of_randomization: str
+    estimated_runtime_days: int
+    minimum_detectable_effect: float
+    tradeoffs: list[str]
+    clarifying_questions: list[str]
+    confidence: float           # 0.0–1.0
+```
+
+This output is what gets sent to GrowthBook, LaunchDarkly, or Statsig to create the experiment.
+
+---
+
+### Agent 3 — Experiment Monitoring
+
+**File:** `backend/agents/monitoring_agent.py`
+
+Three-node pipeline. Runs daily against every active experiment on connected platforms. Stats are computed in Python first — Claude synthesizes, never calculates.
+
+```
+fetch_data → run_stat_checks → synthesize_health
+    ↓ (fetch_failed)                  ↑
+    └─────────────────────────────────┘
+```
+
+| Node | What runs | Claude's role |
+|---|---|---|
+| `fetch_data` | GrowthBook API + BigQuery for metric observations | — |
+| `run_stat_checks` | Python: SRM, novelty, sequential test, CUPED | — |
+| `synthesize_health` | — | Interprets stat check outputs, produces `summary` and `suggested_actions` |
+
+**Stats computed before Claude sees anything:**
+
+```python
+# SRM Detection — chi-square goodness-of-fit
+srm: SRMResult = stats.check_srm(variation_counts, expected_split=0.5)
+# p < 0.01 → has_srm = True → health_status forced to "critical"
+
+# Novelty Detection — early vs late window lift ratio
+novelty: NoveltyResult = stats.check_novelty(time_series_data)
+# early_lift / late_lift > 1.5 → novelty_detected = True
+
+# Sequential Testing — O'Brien-Fleming alpha spending
+seq: SequentialTestResult = stats.sequential_test(observations, alpha=0.05)
+# boundary = z_alpha / sqrt(information_fraction)
+# returns: can_stop, recommendation ("stop_ship" | "stop_abandon" | "continue")
+
+# CUPED — OLS variance reduction using pre-experiment covariates
+cuped: CupedResult = stats.apply_cuped(pre_observations, post_observations)
+# theta = cov(pre, post) / var(pre)
+# skipped if < 10 users have pre-experiment data
+```
+
+**Output model:**
+```python
+class MonitoringReport(BaseModel):
+    experiment_id: str
+    health_status: str              # "healthy" | "warning" | "critical"
+    srm_check: SRMResult | None
+    data_quality: DataQualityResult | None
+    sequential_test: SequentialTestResult | None
+    novelty_check: NoveltyResult | None
+    summary: str
+    suggested_actions: list[str]
+    confidence: float
+```
+
+This is emailed daily via SendGrid. LaunchDarkly and Statsig experiments get status tracking only — full monitoring requires GrowthBook's metric access.
+
+---
+
+### Agent 4 — Post-Experiment Interpretation
+
+**File:** `backend/agents/interpretation_agent.py`
+
+Four-node pipeline. Takes raw assignment + event logs, runs the full statistical pipeline, then passes the computed results to Claude for interpretation. Claude never sees raw data — only pre-computed statistics.
+
+```
+fetch_results → run_significance_tests → interpret_with_claude → build_recommendation
+      ↓ (data_quality_failed)                                            ↑
+      └────────────────────────────────────────────────────────────────────┘
+```
+
+| Node | What runs | Claude's role |
+|---|---|---|
+| `fetch_results` | GrowthBook results + BigQuery events, data quality checks | — |
+| `run_significance_tests` | z-test, Welch's t-test, guardrail z-tests, 95% CIs | — |
+| `interpret_with_claude` | — | Synthesizes pre-computed stats into verdict, narrative, risks, follow-up cuts |
+| `build_recommendation` | Pydantic assembly and validation | — |
+
+**Stats pipeline (Python, before Claude):**
+
+```python
+# Conversion rate: two-proportion z-test with pooled SE
+p_pool = (conv_ctrl + conv_trt) / (n_ctrl + n_trt)
+SE = sqrt(p_pool * (1 - p_pool) * (1/n_ctrl + 1/n_trt))
+z = (p_trt - p_ctrl) / SE
+p_value = 2 * (1 - norm.cdf(abs(z)))
+
+# Revenue per user: Welch's t-test (unequal variance)
+t_stat, p_value = ttest_ind(revenue_ctrl, revenue_trt, equal_var=False)
+
+# Guardrails: each guardrail event type gets its own z-test
+# Any guardrail that degrades at p < 0.05 flags the recommendation
+
+# 95% CI on relative lift via normal approximation
+ci_low = lift - 1.96 * SE_lift
+ci_high = lift + 1.96 * SE_lift
+```
+
+Claude receives a structured context containing only: z-scores, p-values, relative lifts, CIs, guardrail flags, SRM result, novelty flag, and the experiment hypothesis. It produces a verdict from evidence — not from raw data.
+
+**Output model:**
+```python
+class Recommendation(BaseModel):
+    experiment_id: str
+    decision: str               # "ship" | "iterate" | "abandon"
+    confidence: float           # 0.0–1.0
+    primary_metric_summary: str
+    guardrail_summary: str
+    reasoning: str
+    follow_up_cuts: list[str]
+    risks: list[str]
+    data_quality_passed: bool
+    created_at: datetime
+```
+
+---
+
+## What AI Engineering Looks Like Here
+
+Most LLM apps are one prompt → one response. This is not that.
+
+**Typed state threading.** Each agent uses a `TypedDict` as its state schema. LangGraph passes state between nodes as partial updates — every node declares exactly what it writes, and undeclared keys are silently dropped. State is never mutated in place.
+
+**Stateless calls at every node.** Every Claude call is independent — no conversation history, no accumulated context. Each node gets exactly the context it needs, nothing it doesn't. This keeps calls auditable, predictable, and debuggable.
+
+**Stats first, Claude second.** The monitoring and interpretation agents never ask Claude to compute statistics. NumPy and SciPy handle SRM detection, z-tests, Welch's t-tests, sequential testing, and CUPED. Claude only sees pre-computed numbers and decides what they mean. This isn't just about accuracy — it means the statistical outputs are reproducible and verifiable independent of the LLM.
+
+**RAG inside the opportunity agent.** Node 2 (`retrieve_context`) queries a `SimpleVectorStore` built from the ingested analytics data — cosine similarity over TF-IDF embeddings. The most relevant chunks are injected into the Claude prompt for Node 3. This grounds candidate generation in specific data signals rather than general experimentation knowledge.
+
+**Conditional edges for failure handling.** Each agent graphs a `fetch_failed` path that bypasses the middle nodes and routes directly to `build_report`/`build_recommendation` with a structured error output. The system never surfaces a raw exception to the API caller.
+
+**Pydantic at every boundary.** Agent outputs are Pydantic models (`OpportunityReport`, `ExperimentDesign`, `MonitoringReport`, `Recommendation`). Malformed LLM outputs are caught at validation, logged, and handled — never passed downstream silently.
+
+**Automated pipeline.** The monitoring agent runs daily via APScheduler without any user trigger. It iterates all connected users, fetches experiments, runs the stat checks, writes snapshots to SQLite, and sends a formatted HTML email via SendGrid. The APScheduler job and its health endpoint exist so you can verify the pipeline is alive.
 
 ---
 
@@ -56,75 +276,44 @@ Upload raw assignment and event logs. The AI validates integrity, computes all s
 
 | Layer | Technology |
 |---|---|
+| Agent orchestration | LangGraph (StateGraph, TypedDict, conditional edges) |
+| AI model | Claude Sonnet (Anthropic) — stateless call per node |
+| Stats engine | NumPy + SciPy — SRM, z-test, Welch's t, sequential, CUPED |
+| RAG | SimpleVectorStore — cosine similarity, TF-IDF embeddings |
 | Backend | FastAPI |
-| AI orchestration | LangGraph + Claude Sonnet (Anthropic) |
-| Stats engine | NumPy + SciPy (manual implementations) |
-| Experiment platform | GrowthBook (self-hosted via Docker) |
+| Experiment platforms | GrowthBook (self-hosted), LaunchDarkly, Statsig |
+| Analytics integrations | Google Analytics 4 (OAuth 2.0), Amplitude, Mixpanel |
+| Daily scheduling | APScheduler (AsyncIOScheduler + CronTrigger at 6 AM EST) |
+| Email | SendGrid |
+| Snapshot storage | SQLite via aiosqlite |
 | Frontend | Next.js 14 (App Router) |
 | Auth | Clerk |
-| Analytics integration | Google Analytics 4 (OAuth 2.0) |
+| Credential encryption | Fernet (cryptography) — encrypted to disk on named Docker volume |
 | Local dev | Docker Compose |
 
 ---
 
-## How It Works
+## User-Facing Paths
 
-### Opportunity Discovery Agent
+Three entry points from the landing hub at `/select`. Each one feeds data into one or more agents above.
 
-Takes a behavioral dataset and returns ranked experiment opportunities backed by actual data signals.
+### Path 1 — Opportunity Discovery from Datasets
 
-```mermaid
-flowchart LR
-    A([CSV / Dataset]) --> B[Ingest & Normalize]
-    B --> C[Analyze Segments]
-    C --> D[Score & Rank]
-    D --> E[Build Report]
-    E --> F([Ranked Opportunities])
-```
+Upload any behavioral CSV (or pick from four pre-built ones: Google Merchandise Store, Olist E-Commerce, Instacart, Telco Churn). Feeds **Agent 1** (Opportunity Discovery).
 
-| Step | What it does |
-|---|---|
-| Ingest & Normalize | Claude reads any CSV and extracts behavioral signals — funnel drop-offs, segment performance gaps, revenue patterns |
-| Analyze Segments | Identifies the highest-leverage areas: which pages, devices, user cohorts, or product categories have the biggest gaps |
-| Score & Rank | Each opportunity is scored by estimated impact, implementation difficulty, and signal strength |
-| Build Report | Returns structured opportunities with hypothesis, primary metric, guardrail recommendations, and lift estimates |
+One click from each opportunity to frame it and start the experiment in GrowthBook, LaunchDarkly, or Statsig — that click runs **Agent 2** (Framing).
 
----
+### Path 2 — Live Analytics (GA4, Amplitude, Mixpanel)
 
-### Post-Experiment Statistical Pipeline
+Connect your analytics platform via OAuth 2.0 or API key. Live data feeds **Agent 1** directly, bypassing the CSV step. Platform setup interstitial lets you connect GrowthBook / LaunchDarkly / Statsig inline before seeing opportunities.
 
-Runs the full statistical analysis on raw logs before passing results to Claude for interpretation.
+### Path 3 — Post-Experiment Interpretation
 
-**SRM Detection** — chi-square goodness-of-fit test on observed vs expected traffic splits. Flags when p < 0.01. Signals randomization infrastructure problems that would make all downstream results unreliable.
+Upload raw assignment log (`user_id, variant, timestamp`) + event log (`user_id, event_name, timestamp, revenue`). Runs **Agent 4** (Interpretation) directly — no GrowthBook connection required.
 
-**Novelty Detection** — splits the experiment window at the midpoint and computes lift in each half. A ratio above 1.5 where both halves are positive means users are reacting to novelty, not finding genuine value.
+### Daily Monitoring (Automated)
 
-**Conversion Rate Significance** — two-proportion z-test with pooled standard error. Computes z-statistic, two-tailed p-value, and 95% confidence interval on relative lift.
-
-**Revenue Per User** — Welch's t-test (unequal variance) for continuous revenue metrics. Correct for real experiment data where variance is almost never equal between variants.
-
-**Guardrail Metrics** — each guardrail event type gets its own z-test. Any guardrail that degrades significantly is flagged and factored into the final verdict.
-
----
-
-### Interpretation Layer
-
-After statistics are computed, Claude produces the full interpretation.
-
-- Verdict: **Ship**, **Don't Ship**, or **Run Longer**
-- Confidence score tied to statistical evidence quality
-- Narrative: what moved, what didn't, and why it matters
-- Key evidence: the 3–5 most important signals from the data
-- Risks: what could go wrong if you act on this recommendation
-- Follow-up: next experiments or cuts to investigate
-
----
-
-### GA4 Integration
-
-OAuth 2.0 flow with Google. The callback route is a public path (no Clerk auth required) to avoid authentication chain latency. The backend exchanges the authorization code for tokens, stores them in-memory keyed by Clerk user ID, and uses the GA4 Data API to pull real funnel and segment data.
-
-Rate limit fallback: the demo GA4 property (213025502) exhausts its quota quickly under shared use. When the API returns 429, the backend falls back to `ingest_demo()` automatically without surfacing an error to the user.
+**Agent 3** (Monitoring) runs automatically at 6 AM EST for every user with a connected experiment platform. No user action required. Output arrives by email.
 
 ---
 
@@ -134,49 +323,58 @@ Rate limit fallback: the demo GA4 property (213025502) exhausts its quota quickl
 experimentiq/
 ├── backend/
 │   ├── agents/
-│   │   ├── opportunity_agent.py        # Dataset → ranked experiment opportunities
-│   │   ├── framing_agent.py            # Hypothesis → structured experiment design
-│   │   ├── monitoring_agent.py         # Running experiment health checks
-│   │   └── interpretation_agent.py    # Results → ship/iterate/abandon recommendation
+│   │   ├── opportunity_agent.py        # Agent 1: 5-node LangGraph, OpportunityReport
+│   │   ├── framing_agent.py            # Agent 2: 4-node LangGraph, ExperimentDesign
+│   │   ├── monitoring_agent.py         # Agent 3: 3-node LangGraph, MonitoringReport
+│   │   └── interpretation_agent.py    # Agent 4: 4-node LangGraph, Recommendation
 │   ├── api/
-│   │   ├── datasets.py                 # Dataset upload + opportunity discovery endpoints
-│   │   ├── analytics.py                # GA4 OAuth + live data analysis
-│   │   ├── experiment_interpret.py     # Raw log upload → stats → AI verdict
-│   │   ├── experiments.py             # Frame, list, get experiment endpoints
-│   │   ├── monitoring.py              # Monitoring report endpoint
-│   │   ├── interpretation.py          # Interpretation and recommendation endpoints
-│   │   └── health.py                  # Health check
+│   │   ├── datasets.py                 # Dataset upload → Agent 1
+│   │   ├── analytics.py                # GA4 OAuth + live data → Agent 1
+│   │   ├── experiments.py             # Frame (Agent 2), list, get
+│   │   ├── start_experiment.py        # Create in GrowthBook / LaunchDarkly / Statsig
+│   │   ├── monitoring.py              # Agent 3 endpoint
+│   │   ├── experiment_interpret.py     # Raw log upload → Agent 4
+│   │   ├── interpretation.py          # Agent 4 endpoint (GrowthBook path)
+│   │   ├── reports.py                 # Daily report history + manual trigger
+│   │   └── health.py
 │   ├── services/
-│   │   ├── experiment_stats.py         # Full statistical pipeline (SRM, novelty, z-test, t-test)
-│   │   ├── experiment_interpreter.py  # Claude interpretation layer
-│   │   ├── analytics_ingestion.py     # GA4 data normalization
+│   │   ├── stats.py                   # SRM, novelty, sequential, CUPED, z-test, t-test
+│   │   ├── experiment_stats.py         # Post-experiment full stats pipeline
+│   │   ├── analytics_ingestion.py     # GA4 normalization → AnalyticsSummary
+│   │   ├── vector_store.py            # SimpleVectorStore (cosine similarity, TF-IDF)
 │   │   ├── growthbook.py              # GrowthBook REST API client
-│   │   └── stats.py                   # CUPED, sequential testing, shared stat utilities
+│   │   ├── launchdarkly.py            # LaunchDarkly REST API v2 client
+│   │   ├── statsig.py                 # Statsig API client
+│   │   ├── oauth_store.py             # Fernet-encrypted credential store
+│   │   ├── experiment_tracker.py      # Daily job: fetch → monitor → snapshot → email
+│   │   ├── scheduler.py               # APScheduler (CronTrigger 6 AM EST)
+│   │   ├── notifier.py                # SendGrid daily report email
+│   │   ├── db.py                      # SQLite: experiment_snapshots, daily_reports
+│   │   └── bigquery.py                # BigQuery metric observations
 │   ├── middleware/
-│   │   ├── auth.py                    # Clerk JWT validation (OAuth callback is public)
-│   │   ├── rate_limit.py              # SlowAPI rate limiting
+│   │   ├── auth.py                    # Clerk JWT validation
+│   │   ├── rate_limit.py              # SlowAPI (10 req/min per user on LLM endpoints)
 │   │   └── logging.py                 # Structured JSON request logging
-│   ├── main.py                        # FastAPI app, router registration, middleware
+│   ├── main.py
 │   └── requirements.txt
 ├── frontend/
 │   ├── app/
 │   │   ├── select/page.tsx            # Three-path hub
-│   │   ├── datasets/page.tsx          # Dataset selection + upload
-│   │   ├── analytics/page.tsx         # GA4 connection + live analysis
-│   │   ├── interpret/page.tsx         # Raw log upload + results display
-│   │   ├── experiments/new/           # Framing wizard
-│   │   └── experiments/[id]/          # Experiment detail, monitoring, interpretation
-│   ├── app/api/
-│   │   ├── experiments/interpret/     # Next.js proxy to FastAPI interpret endpoint
-│   │   ├── auth/callback/google/      # OAuth callback handler (no Clerk auth)
-│   │   └── analytics/                 # GA4 connection status + data endpoints
+│   │   ├── datasets/page.tsx          # Dataset upload + opportunity display
+│   │   ├── analytics/page.tsx         # GA4 + experiment platform setup interstitial
+│   │   ├── interpret/page.tsx         # Raw log upload + Agent 4 results
+│   │   ├── experiments/page.tsx       # Platform connections (GB / LD / Statsig)
+│   │   ├── experiments/new/           # Framing wizard (Agent 2)
+│   │   └── experiments/[id]/          # Detail, monitoring (Agent 3), interpretation (Agent 4)
+│   ├── components/
+│   │   └── ExperimentDetailModal.tsx  # Multi-platform launch UI
 │   └── lib/
-│       ├── api.ts                     # Typed API client
+│       ├── api.ts                     # Typed FastAPI client
 │       └── auth.ts                    # Clerk session token helper
-├── docker-compose.yml                 # GrowthBook + MongoDB
-├── ubereats_assignment.csv            # Demo: social proof experiment (Ship verdict)
+├── docker-compose.yml
+├── ubereats_assignment.csv            # Demo: social proof experiment → Ship
 ├── ubereats_events.csv
-├── linkedin_assignment.csv            # Demo: AI connection request experiment (Don't Ship verdict)
+├── linkedin_assignment.csv            # Demo: AI connection requests → Don't Ship
 └── linkedin_events.csv
 ```
 
@@ -184,200 +382,201 @@ experimentiq/
 
 ## API Endpoints
 
-| Method | Path | Description |
+| Method | Path | Agent |
 |---|---|---|
-| POST | `/api/v1/datasets/analyze` | Upload CSV → ranked experiment opportunities |
-| GET | `/api/v1/auth/google/authorize` | Start GA4 OAuth flow |
-| POST | `/api/v1/auth/google/callback` | Exchange OAuth code for tokens (public route) |
-| GET | `/api/v1/auth/google/status` | Check GA4 connection status |
-| POST | `/api/v1/analytics/analyze` | Run opportunity discovery on live GA4 data |
-| POST | `/api/v1/experiments/interpret/` | Upload raw logs → stats → AI verdict |
-| POST | `/api/v1/experiments/frame` | Framing agent: hypothesis to ExperimentDesign |
-| GET | `/api/v1/experiments` | List experiments from GrowthBook |
-| GET | `/api/v1/experiments/{id}` | Single experiment detail |
-| GET | `/api/v1/experiments/{id}/monitor` | Monitoring agent: health report |
-| POST | `/api/v1/experiments/{id}/interpret` | Interpretation agent: recommendation |
-| GET | `/health` | Health check |
+| POST | `/api/v1/datasets/analyze` | Agent 1 (Opportunity) |
+| GET | `/api/v1/auth/google/authorize` | — OAuth flow |
+| POST | `/api/v1/auth/google/callback` | — public route |
+| GET | `/api/v1/auth/google/status` | — |
+| POST | `/api/v1/analytics/analyze` | Agent 1 (live GA4 data) |
+| POST | `/api/v1/experiments/frame` | Agent 2 (Framing) |
+| GET | `/api/v1/experiments` | GrowthBook list |
+| GET | `/api/v1/experiments/{id}` | GrowthBook detail |
+| GET | `/api/v1/experiments/{id}/monitor` | Agent 3 (Monitoring) |
+| POST | `/api/v1/experiments/{id}/interpret` | Agent 4 (Interpretation, GrowthBook path) |
+| POST | `/api/v1/experiments/interpret/` | Agent 4 (raw CSV path) |
+| POST | `/api/v1/experiments/start` | Create in GB / LD / Statsig |
+| GET | `/api/v1/experiments/platform-status` | Connected platform check |
+| POST | `/api/v1/experiments/connect-launchdarkly` | — |
+| POST | `/api/v1/experiments/connect-statsig` | — |
+| GET | `/api/v1/reports/history` | Daily report history |
+| GET | `/api/v1/reports/snapshots` | Experiment snapshots by date |
+| POST | `/api/v1/reports/run-now` | Manual daily job trigger |
+| GET | `/api/v1/reports/scheduler-status` | Next scheduled run |
+| GET | `/health` | — |
 
-LLM endpoints are rate limited to 10 requests per minute per user. All endpoints except `/health`, `/docs`, and the OAuth callback require a valid Clerk JWT.
+LLM endpoints rate-limited to 10 req/min per user. All endpoints except `/health`, the OAuth callback, and `/api/v1/reports/run-now` (with `X-Admin-Secret` header) require a valid Clerk JWT.
 
 ---
 
 ## Demo CSV Files
 
-Two realistic experiment datasets are included at the project root for testing the interpretation feature end-to-end.
-
 **Social Proof Experiment** (`ubereats_assignment.csv` + `ubereats_events.csv`)
 
-10,100 users across control and treatment. Treatment shows +23.1% lift on the primary conversion event (18.0% → 22.2%). All guardrails pass. Expected verdict: **Ship**.
+10,100 users. Treatment: +23.1% lift on `order_placed` (18.0% → 22.2%). All guardrails pass. Verdict: **Ship**.
 
-**Engagement Feature Experiment** (`linkedin_assignment.csv` + `linkedin_events.csv`)
+Metadata to enter: hypothesis = "Adding social proof (order counts, ratings) to restaurant cards will increase users clicking through to place orders", target event = `order_placed`
 
-9,700 users. Treatment shows +19% on the primary engagement event but a downstream removal metric increases 162% and a spam signal increases 214%. Expected verdict: **Don't Ship** — the primary metric improves but guardrails reveal severe downstream harm.
+**AI Feature Experiment** (`linkedin_assignment.csv` + `linkedin_events.csv`)
 
-These two examples are intentionally contrasting: one is a clean win, one is a case where acting on the primary metric alone would lead to the wrong decision. They demonstrate that the system handles nuanced real-world outcomes, not just textbook results.
+9,700 users. Treatment: +19% on the primary engagement event. But connection removal rate +162%, spam signal +214%. Verdict: **Don't Ship** — primary metric improved, guardrails failed.
+
+Metadata to enter: hypothesis = "AI-generated connection request messages will increase connection acceptance rates by reducing friction in the request-writing step", target event = `connection_accepted`
+
+These two cases are intentionally contrasting. The LinkedIn case is the more important demo — it shows the system making the correct call when the primary metric is misleading.
 
 ---
 
-## Local Setup
+## Quick Start (Docker)
 
-**Prerequisites:** Python 3.11+, Node.js 18+, Anthropic API key, Clerk account, Google Cloud project with GA4 access (for Path 2). Docker is installed automatically — see below.
-
-**1. Run the setup script**
-
-This checks for Docker, Node.js, and Python and installs anything that's missing. Run it once from the project root before anything else.
+**1. Clone and configure**
 
 ```bash
-chmod +x setup.sh && ./setup.sh
+git clone https://github.com/nishaanjoshi0/experimentiq.git
+cd experimentiq
 ```
 
-On macOS it installs Docker Desktop via Homebrew if needed. On Linux it uses apt or yum. On Windows it prints a download link. Safe to run multiple times — it skips anything already installed.
-
-Alternatively, `npm install` inside the `frontend/` folder also runs an automatic Docker check as a `postinstall` hook, and for Python you can run:
-
-```bash
-python scripts/check_deps.py
+Root `.env` (MongoDB for GrowthBook):
+```
+MONGO_USERNAME=admin
+MONGO_PASSWORD=yourpassword
 ```
 
-before `pip install` to verify Docker and your Python version upfront.
-
-**2. Start GrowthBook**
-
-```bash
-docker compose up -d
-```
-
-Open `http://localhost:3000`, create an admin account.
-
-**3. Start the backend**
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-Create `backend/.env`:
-
+`backend/.env`:
 ```
 ENVIRONMENT=development
-ANTHROPIC_API_KEY=your-key
-
-# Clerk — CLERK_ISSUER_URL is your Clerk Frontend API URL (e.g. https://xxxx.clerk.accounts.dev)
+ANTHROPIC_API_KEY=your-anthropic-key
 CLERK_JWKS_URL=https://your-clerk-domain/.well-known/jwks.json
-CLERK_ISSUER_URL=https://your-clerk-domain
-CLERK_SECRET_KEY=your-clerk-secret
+CLERK_SECRET_KEY=your-clerk-secret-key
 
-# GrowthBook
-GROWTHBOOK_API_URL=http://localhost:3100
+GROWTHBOOK_API_URL=http://growthbook:3100
 GROWTHBOOK_API_KEY=your-growthbook-key
 
-# Google OAuth (GA4)
-GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
-GOOGLE_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_OAUTH_CLIENT_ID=your-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
 GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3001/api/auth/callback/google
 
-# OAuth token encryption — generate with:
 # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 OAUTH_ENCRYPTION_KEY=your-fernet-key
+CREDENTIAL_STORE_PATH=/app/data/creds.json
 
-# CORS — comma-separated list of allowed origins (no wildcards)
+SENDGRID_API_KEY=your-sendgrid-key
+NOTIFY_FROM_EMAIL=reports@yourdomain.com
+NOTIFY_FROM_NAME=ExperimentIQ
+NOTIFY_TO_EMAIL=you@yourdomain.com
+DAILY_JOB_HOUR_UTC=11
+DAILY_JOB_MINUTE_UTC=0
+
+ADMIN_SECRET=your-admin-secret
 ALLOWED_ORIGINS=http://localhost:3001
 ```
 
-Create a `.env` file at the project root for Docker Compose (MongoDB credentials):
-
-```
-MONGO_USERNAME=your-mongo-username
-MONGO_PASSWORD=your-strong-mongo-password
-```
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-**4. Start the frontend**
-
-```bash
-cd frontend
-npm install
-```
-
-Create `frontend/.env.local`:
-
+`frontend/.env.local`:
 ```
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-publishable-key
 CLERK_SECRET_KEY=your-clerk-secret-key
-FASTAPI_BASE_URL=http://localhost:8000
+FASTAPI_BASE_URL=http://backend:8000
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/select
 NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/select
 ```
 
+**2. Start**
+
 ```bash
-npm run dev -- --port 3001
+docker compose up --build
 ```
 
-Open `http://localhost:3001`. After sign-in you land on `/select` to choose a path.
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3001 |
+| Backend API | http://localhost:8000 |
+| GrowthBook UI | http://localhost:3000 |
+| GrowthBook API | http://localhost:3100 |
+
+Open GrowthBook, create an admin account, generate an API key, add it to `backend/.env` as `GROWTHBOOK_API_KEY`, then `docker compose restart backend`.
 
 ---
 
-## Testing the Interpretation Feature
+## Local Setup
 
-The fastest way to test end-to-end with realistic data:
+**Backend**
+```bash
+cd backend
+pip install -r requirements.txt
+# create backend/.env (use GROWTHBOOK_API_URL=http://localhost:3100)
+uvicorn main:app --reload --port 8000
+```
 
-1. Go to `/interpret`
-2. Upload `ubereats_assignment.csv` as the assignment file
-3. Upload `ubereats_events.csv` as the events file
-4. Set a hypothesis describing what the treatment was testing
-5. Set the target event name matching the primary conversion event in the file
-6. Submit — expect a **Ship** verdict at ~95% confidence
+**Frontend**
+```bash
+cd frontend
+npm install
+# create frontend/.env.local (use FASTAPI_BASE_URL=http://localhost:8000)
+npm run dev -- --port 3001
+```
 
-Then repeat with the second pair of files. Expect a **Don't Ship** verdict despite the primary metric improving — the guardrail signals reveal downstream harm that makes shipping the wrong call.
+**GrowthBook** (Docker)
+```bash
+docker compose up -d
+```
 
-The system works the same way with your own CSV files. Any assignment log (columns: `user_id`, `variant`, `timestamp`) and event log (columns: `user_id`, `event_name`, `timestamp`, optionally `revenue`) will be accepted.
+---
+
+## Triggering the Daily Report Manually
+
+```bash
+curl -X POST http://localhost:8000/api/v1/reports/run-now \
+  -H "X-Admin-Secret: your-admin-secret"
+
+curl http://localhost:8000/api/v1/reports/scheduler-status \
+  -H "Authorization: Bearer your-clerk-jwt"
+```
 
 ---
 
 ## Statistical Methods
 
-All statistical methods are implemented from scratch using NumPy and SciPy.
+All implemented from scratch in `backend/services/stats.py` and `backend/services/experiment_stats.py`.
 
-**Two-proportion z-test** for conversion rate comparisons. Uses pooled standard error: `p_pool = (conv_ctrl + conv_trt) / (users_ctrl + users_trt)`, `SE = sqrt(p_pool * (1 - p_pool) * (1/n_ctrl + 1/n_trt))`. Two-tailed p-value via `scipy.stats.norm.cdf`. 95% CI via normal approximation on relative lift.
+**Two-proportion z-test** — pooled SE: `p_pool = (conv_ctrl + conv_trt) / (n_ctrl + n_trt)`, `SE = sqrt(p_pool * (1 - p_pool) * (1/n_ctrl + 1/n_trt))`. Two-tailed p via `scipy.stats.norm.cdf`. 95% CI via normal approximation on relative lift.
 
-**Welch's t-test** (`scipy.stats.ttest_ind(equal_var=False)`) for continuous revenue metrics. Correct for real experiment data where variance between variants is almost never equal.
+**Welch's t-test** — `scipy.stats.ttest_ind(equal_var=False)` for revenue. Correct for real experiment data where variance is almost never equal.
 
-**SRM detection** — chi-square goodness-of-fit (`scipy.stats.chisquare`) on observed vs expected variation counts given the target traffic split. Flags when p < 0.01.
+**SRM detection** — `scipy.stats.chisquare` on observed vs expected split. Flags at p < 0.01.
 
-**Novelty detection** — splits experiment window at midpoint. Computes conversion rate lift in each half. Flags when the early-window lift is more than 1.5× the full-window lift and both are positive.
+**Novelty detection** — early vs late window lift ratio. Flags when early lift / full lift > 1.5 and both are positive.
 
-**CUPED** (in the framing/monitoring agents) — OLS regression using pre-experiment metric values as covariates to reduce variance. `theta = cov(pre, post) / var(pre)`. Skipped when fewer than 10 users have pre-experiment data.
+**CUPED** — OLS regression on pre-experiment covariates. `theta = cov(pre, post) / var(pre)`. Skipped when fewer than 10 users have pre-experiment data.
 
-**Sequential testing** (in the monitoring agent) — O'Brien-Fleming alpha spending boundary. `boundary = z_alpha / sqrt(information_fraction)`. Recommends stop_ship, stop_abandon, or continue.
+**Sequential testing** — O'Brien-Fleming alpha spending. `boundary = z_alpha / sqrt(information_fraction)`. Returns `stop_ship`, `stop_abandon`, or `continue`.
 
 ---
 
 ## Security
 
-- All secrets loaded from environment variables. Nothing hardcoded.
-- Clerk JWT validated on every API request via JWKS endpoint.
-- The GA4 OAuth callback route is explicitly whitelisted as a public path. All other non-health routes require authentication.
-- OAuth tokens stored in-memory server-side, keyed by Clerk user ID. Not persisted to disk or a database.
-- Next.js API routes proxy all FastAPI calls server-side. Raw data never reaches the browser directly.
-- LLM calls are stateless. No experiment data stored in conversation history between calls.
+- All secrets loaded from environment variables.
+- Clerk JWT validated on every request via JWKS endpoint with 5-minute local cache.
+- GA4 OAuth callback and admin report trigger are the only public non-health paths.
+- Experiment platform credentials stored Fernet-encrypted on a Docker named volume (`credsdata`). Not plaintext, not in-memory.
+- Next.js proxies all FastAPI calls server-side — credentials never reach the browser.
+- Claude calls are stateless — no experiment data accumulates in conversation history.
 
 ---
 
-## Design Decisions
+## Key Design Decisions
 
-**Universal CSV normalization via Claude instead of per-dataset adapters.** Rather than writing a separate ingestion adapter for every dataset format, Claude reads the raw CSV and extracts behavioral signals directly. This handles arbitrary column names, mixed formats, and novel datasets without any code changes.
+**Stats first, Claude second.** The monitoring and interpretation agents compute all statistics in Python before passing results to Claude. Claude interprets evidence — it doesn't calculate. This makes statistical outputs reproducible, verifiable, and independent of the model.
 
-**LangGraph over single LLM calls.** Multi-step agents produce more reliable structured output than prompting for everything in one shot. Each node has a narrow task and LangGraph merges partial state updates. Undeclared keys in the TypedDict are silently dropped by LangGraph — all state keys must be declared explicitly.
+**Four agents with narrow scope instead of one large prompt.** Each agent has a single job. The opportunity agent doesn't interpret results. The interpretation agent doesn't discover opportunities. Narrow tasks produce more reliable structured outputs than prompts that attempt everything at once.
 
-**Stateless Claude calls.** Every node makes an independent API call with no conversation history. Cleaner audit trail, no context window accumulation, easier to debug when a node fails.
+**Typed state at every boundary.** `TypedDict` for LangGraph state, Pydantic for agent outputs. Malformed LLM responses are caught at the boundary and handled — never silently passed to the next node.
 
-**Public OAuth callback.** Making the GA4 callback route bypass Clerk auth eliminates one async hop in the OAuth flow. The callback only handles a temporary authorization code — there is no meaningful security benefit to requiring a Clerk JWT at this step.
+**Conditional edges for resilience.** Every agent graphs a `fetch_failed` path that routes to the terminal node with a structured error output. The API always returns a valid response shape.
 
-**Graceful 429 fallback for GA4.** The demo GA4 property quota is exhausted quickly under shared use. Falling back to static demo data rather than surfacing an error means the feature is always demonstrable regardless of quota state.
+**Always show all three experiment platforms.** Whether connected or not, GrowthBook / LaunchDarkly / Statsig are always visible in the launch UI. Connected = solid action button. Disconnected = grey outline link to the connections page.
 
-**Ship/Don't Ship/Run Longer as the output primitive.** These three verdicts map directly to the actual decision a PM or DS has to make. They are more actionable than a p-value and more defensible than a qualitative recommendation without numbers behind it.
+**Fernet encryption for credential persistence.** In-memory stores wipe on restart. File-backed Fernet-encrypted JSON on a named Docker volume survives container recreations. The encryption key is stable via `OAUTH_ENCRYPTION_KEY` in `.env`.
+
+**`.get("key") or "default"` over `.get("key", "default")`.** Python's default-value form returns the default only when the key is missing — not when the stored value is an empty string. API credentials stored as `""` would be silently passed as empty. The `or` pattern handles both cases.

@@ -81,6 +81,7 @@ interface ExperimentApiPayload {
   hypothesis?: string;
   created_at?: string;
   createdAt?: string;
+  dateCreated?: string;
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -105,14 +106,74 @@ function normalizeExperiment(payload: ExperimentApiPayload): Experiment {
   };
 }
 
-export async function listExperiments(): Promise<Experiment[]> {
-  const response = await fetch("/api/experiments", {
+export type ExperimentPlatform = "growthbook" | "launchdarkly" | "statsig";
+
+export interface ExperimentPlatformStatus {
+  connected: boolean;
+  connected_at?: string;
+}
+
+export interface AllExperimentPlatformStatus {
+  growthbook: ExperimentPlatformStatus;
+  launchdarkly: ExperimentPlatformStatus;
+  statsig: ExperimentPlatformStatus;
+}
+
+export async function listExperiments(platform: ExperimentPlatform = "growthbook"): Promise<Experiment[]> {
+  const response = await fetch(`/api/experiments?platform=${platform}`, {
     method: "GET",
     cache: "no-store",
     credentials: "include"
   });
   const payload = await parseJsonResponse<ExperimentApiPayload[]>(response);
   return payload.map(normalizeExperiment);
+}
+
+export async function getExperimentPlatformStatuses(): Promise<AllExperimentPlatformStatus> {
+  const response = await fetch("/api/experiments/platforms", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseJsonResponse<AllExperimentPlatformStatus>(response);
+}
+
+export async function connectLaunchDarkly(
+  access_token: string,
+  project_key: string,
+  environment_key: string
+): Promise<{ connected: boolean }> {
+  const response = await fetch("/api/experiments/platforms?platform=launchdarkly", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token, project_key, environment_key }),
+  });
+  return parseJsonResponse<{ connected: boolean }>(response);
+}
+
+export async function disconnectLaunchDarkly(): Promise<void> {
+  await fetch("/api/experiments/platforms?platform=launchdarkly", {
+    method: "DELETE",
+    credentials: "include",
+  });
+}
+
+export async function connectStatsig(server_secret: string): Promise<{ connected: boolean }> {
+  const response = await fetch("/api/experiments/platforms?platform=statsig", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ server_secret }),
+  });
+  return parseJsonResponse<{ connected: boolean }>(response);
+}
+
+export async function disconnectStatsig(): Promise<void> {
+  await fetch("/api/experiments/platforms?platform=statsig", {
+    method: "DELETE",
+    credentials: "include",
+  });
 }
 
 export async function interpretExperiment(id: string): Promise<Recommendation> {
@@ -226,7 +287,9 @@ export interface StartExperimentRequest {
 export interface StartExperimentResponse {
   experiment_id: string;
   name: string;
-  growthbook_url: string;
+  platform: string;
+  platform_url: string;
+  growthbook_url?: string;
 }
 
 export async function fetchDatasets(): Promise<DatasetMeta[]> {
@@ -288,10 +351,78 @@ export async function getGA4Recommendations(
   return parseJsonResponse<OpportunityReport>(response);
 }
 
+export interface AllPlatformStatus {
+  ga4: { connected: boolean };
+  amplitude: { connected: boolean; connected_at?: string };
+  mixpanel: { connected: boolean; connected_at?: string };
+}
+
+export async function getAllPlatformStatuses(): Promise<AllPlatformStatus> {
+  const response = await fetch("/api/analytics/platforms", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseJsonResponse<AllPlatformStatus>(response);
+}
+
+export async function connectAmplitude(api_key: string, api_secret: string): Promise<{ connected: boolean }> {
+  const response = await fetch("/api/analytics/amplitude?action=connect", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key, api_secret }),
+  });
+  return parseJsonResponse<{ connected: boolean }>(response);
+}
+
+export async function disconnectAmplitude(): Promise<void> {
+  await fetch("/api/analytics/amplitude", { method: "DELETE", credentials: "include" });
+}
+
+export async function getAmplitudeRecommendations(
+  payload: { company_description?: string; current_metrics?: Record<string, number> }
+): Promise<OpportunityReport> {
+  const response = await fetch("/api/analytics/amplitude?action=recommendations", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<OpportunityReport>(response);
+}
+
+export async function connectMixpanel(username: string, secret: string, project_id?: string): Promise<{ connected: boolean }> {
+  const response = await fetch("/api/analytics/mixpanel?action=connect", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, secret, project_id: project_id ?? "" }),
+  });
+  return parseJsonResponse<{ connected: boolean }>(response);
+}
+
+export async function disconnectMixpanel(): Promise<void> {
+  await fetch("/api/analytics/mixpanel", { method: "DELETE", credentials: "include" });
+}
+
+export async function getMixpanelRecommendations(
+  payload: { company_description?: string; current_metrics?: Record<string, number> }
+): Promise<OpportunityReport> {
+  const response = await fetch("/api/analytics/mixpanel?action=recommendations", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse<OpportunityReport>(response);
+}
+
 export async function startExperiment(
-  request: StartExperimentRequest
+  request: StartExperimentRequest,
+  platform: ExperimentPlatform = "growthbook"
 ): Promise<StartExperimentResponse> {
-  const response = await fetch("/api/experiments/start", {
+  const response = await fetch(`/api/experiments/start?platform=${platform}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

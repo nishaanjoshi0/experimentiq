@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExperimentIQ — Architecture</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+@keyframes dash    { from { stroke-dashoffset:12; } to { stroke-dashoffset:0; } }
+@keyframes pulse   { 0%,100%{opacity:1;} 50%{opacity:.55;} }
+@keyframes fadein  { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+
+body {
+  background:#06060f;
+  font-family:'Inter',system-ui,sans-serif;
+  color:#e2e8f0;
+  padding:32px 24px 28px;
+  min-width:860px;
+  animation: fadein .35s ease both;
+}
+
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image:radial-gradient(rgba(99,102,241,.06) 1px,transparent 1px);
+  background-size:24px 24px; pointer-events:none; z-index:0;
+}
+
+.wrap { position:relative; z-index:1; max-width:1080px; margin:0 auto; }
+
+/* ── Title ─────────────────── */
+.title-area { text-align:center; margin-bottom:26px; }
+.pill {
+  display:inline-flex; align-items:center; gap:6px;
+  background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.25);
+  border-radius:20px; padding:3px 12px; margin-bottom:10px;
+}
+.pill-dot { width:6px; height:6px; border-radius:50%; background:#6366f1; box-shadow:0 0 7px #6366f1; }
+.pill span { font-size:9px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#818cf8; }
+.h1 { font-size:22px; font-weight:700; color:#f1f5f9; letter-spacing:-.015em; }
+.sub { font-size:11px; color:#2e3a4e; margin-top:4px; letter-spacing:.04em; }
+
+/* ── Section headers ────────── */
+.sh { font-size:8px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#1e2c3d; margin-bottom:8px; }
+
+/* ── Main 5-col grid ─────────── */
+.main {
+  display:grid;
+  grid-template-columns: 136px 36px 1fr 36px 158px;
+  align-items:start;
+  column-gap:0;
+  row-gap:0;
+}
+
+/* ── Input cards ─────────────── */
+.in-col { display:flex; flex-direction:column; gap:6px; padding-right:2px; }
+.in-card {
+  border:1px solid rgba(59,130,246,.22); border-radius:7px;
+  padding:8px 10px; background:rgba(59,130,246,.04);
+  transition:border-color .2s;
+}
+.in-card:hover { border-color:rgba(59,130,246,.5); }
+.in-card .t { font-size:11px; font-weight:600; color:#93c5fd; }
+.in-card .s { font-size:8.5px; color:#2d4060; margin-top:1px; }
+.in-card.raw { border-color:rgba(139,92,246,.22); background:rgba(139,92,246,.04); }
+.in-card.raw .t { color:#c4b5fd; }
+
+/* ── Agent column ─────────────── */
+.ag-col { display:flex; flex-direction:column; gap:9px; }
+
+.agent {
+  border:1px solid rgba(99,102,241,.22); border-radius:10px;
+  padding:13px 14px 11px; background:rgba(10,10,30,.5);
+  position:relative; transition:border-color .25s, box-shadow .25s;
+}
+.agent:hover { border-color:rgba(99,102,241,.5); box-shadow:0 0 24px rgba(99,102,241,.12); }
+
+.agent-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.agent-name { font-size:11.5px; font-weight:700; color:#a5b4fc; letter-spacing:.04em; text-transform:uppercase; }
+.badge {
+  font-size:8px; font-weight:700; padding:2px 8px; border-radius:4px;
+  background:rgba(99,102,241,.14); border:1px solid rgba(99,102,241,.3); color:#6366f1;
+}
+.badge.daily {
+  background:rgba(245,158,11,.1); border-color:rgba(245,158,11,.35); color:#f59e0b;
+  animation:pulse 2s ease infinite;
+}
+
+.nodes { display:flex; align-items:center; gap:3px; flex-wrap:wrap; }
+.nd {
+  font-size:9px; font-weight:500; border-radius:5px; padding:3px 8px;
+  background:rgba(15,23,42,.8); border:1px solid rgba(51,65,85,.6);
+  color:#475569; white-space:nowrap;
+  font-family:'JetBrains Mono','Fira Code','Courier New',monospace;
+  transition:color .2s, border-color .2s;
+}
+.agent:hover .nd { color:#64748b; border-color:rgba(99,102,241,.25); }
+.nd.c { border-color:rgba(245,158,11,.25); color:#b45309; background:rgba(245,158,11,.05); }
+.agent:hover .nd.c { color:#f59e0b; border-color:rgba(245,158,11,.5); }
+.nd.s { border-color:rgba(16,185,129,.22); color:#047857; background:rgba(16,185,129,.04); }
+.agent:hover .nd.s { color:#34d399; border-color:rgba(16,185,129,.45); }
+.arr { font-size:11px; color:rgba(99,102,241,.25); flex-shrink:0; user-select:none; }
+.agent:hover .arr { color:rgba(99,102,241,.5); }
+
+.af { margin-top:10px; padding-top:8px; border-top:1px solid rgba(99,102,241,.1); display:flex; justify-content:space-between; align-items:center; }
+.af-model { font-size:8.5px; font-family:'JetBrains Mono','Fira Code',monospace; color:#253347; }
+.af-model em { color:#4f46e5; font-style:normal; }
+.af-state { font-size:7.5px; color:#1e2b3c; font-style:italic; }
+
+.feed-note {
+  font-size:8px; color:#253347;
+  margin-bottom:9px; padding:4px 8px;
+  background:rgba(99,102,241,.06); border-radius:4px; border-left:2px solid rgba(99,102,241,.3);
+}
+
+/* ── Output cards ─────────────── */
+.out-col { display:flex; flex-direction:column; gap:8px; padding-left:2px; }
+.out-card {
+  border:1px solid rgba(139,92,246,.2); border-radius:8px;
+  padding:9px 11px; background:rgba(76,29,149,.05);
+  transition:border-color .2s, box-shadow .2s;
+}
+.out-card:hover { border-color:rgba(139,92,246,.45); box-shadow:0 0 12px rgba(139,92,246,.08); }
+.out-card .t { font-size:11px; font-weight:600; color:#c4b5fd; }
+.out-card .s { font-size:8.5px; color:#2e2050; margin-top:2px; line-height:1.45; }
+.out-card.amber { border-color:rgba(245,158,11,.2); background:rgba(120,53,15,.05); }
+.out-card.amber .t { color:#fcd34d; }
+.out-card.amber .s { color:#3d2e0a; }
+.out-card.green  { border-color:rgba(16,185,129,.2); background:rgba(6,78,59,.05); }
+.out-card.green .t { color:#6ee7b7; }
+.out-card.green .s { color:#14402f; }
+
+/* ── Vertical connector ──────── */
+.v-connector-wrap { text-align:center; margin:4px 0 0; }
+.v-connector { width:2px; background:linear-gradient(to bottom,rgba(99,102,241,.3),rgba(99,102,241,.0)); margin:0 auto; height:18px; border-radius:1px; }
+.vc-label { font-size:7.5px; color:#1e2b3c; margin-top:3px; letter-spacing:.06em; }
+
+/* ── Compute row ─────────────── */
+.compute { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:12px; }
+.cc { border-radius:9px; padding:12px 14px; transition:box-shadow .2s; }
+.cc:hover { box-shadow:0 0 20px rgba(0,0,0,.4); }
+.cc.gold    { border:1px solid rgba(245,158,11,.28); background:rgba(245,158,11,.05); }
+.cc.emerald { border:1px solid rgba(16,185,129,.25); background:rgba(16,185,129,.05); }
+.cc.slate   { border:1px solid rgba(51,65,85,.45);   background:rgba(30,41,59,.25); }
+.cc-title { font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; margin-bottom:8px; }
+.gold    .cc-title { color:#d97706; }
+.emerald .cc-title { color:#10b981; }
+.slate   .cc-title { color:#475569; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; }
+.chip { font-size:8.5px; border-radius:4px; padding:2px 7px; font-weight:500; }
+.chip.c  { background:rgba(245,158,11,.1); color:#f59e0b; border:1px solid rgba(245,158,11,.2); }
+.chip.s  { background:rgba(16,185,129,.1); color:#34d399; border:1px solid rgba(16,185,129,.2); }
+.chip.gb { background:rgba(52,211,153,.1); color:#34d399; border:1px solid rgba(52,211,153,.3); }
+.chip.ld { background:rgba(64,91,255,.1);  color:#818cf8; border:1px solid rgba(64,91,255,.3); }
+.chip.sg { background:rgba(239,110,35,.1); color:#fb923c; border:1px solid rgba(239,110,35,.3); }
+.chip.inf{ background:rgba(30,41,59,.6);   color:#475569; border:1px solid rgba(51,65,85,.4); }
+.platform-note { margin-top:8px; font-size:8px; color:#253347; line-height:1.65; }
+.platform-note strong { color:#334155; }
+
+/* ── Infra strip ─────────────── */
+.infra {
+  margin-top:10px; border:1px solid rgba(30,41,59,.6); border-radius:8px;
+  padding:9px 14px; background:rgba(15,23,42,.3);
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+}
+.infra-lbl { font-size:7.5px; font-weight:700; letter-spacing:.15em; text-transform:uppercase; color:#1e2b3c; flex-shrink:0; margin-right:3px; }
+
+/* ── Legend ─────────────────── */
+.legend { display:flex; gap:14px; justify-content:flex-end; margin-top:10px; align-items:center; }
+.leg { display:flex; align-items:center; gap:5px; }
+.leg-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.leg-txt { font-size:8px; color:#253347; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="title-area">
+    <div class="pill"><div class="pill-dot"></div><span>LangGraph · 4 Specialized Agents</span></div>
+    <div class="h1">ExperimentIQ Architecture</div>
+    <div class="sub">Claude Sonnet &nbsp;·&nbsp; NumPy / SciPy &nbsp;·&nbsp; FastAPI &nbsp;·&nbsp; Next.js 14 &nbsp;·&nbsp; APScheduler &nbsp;·&nbsp; SendGrid</div>
+  </div>
+
+  <!-- Column headers -->
+  <div class="main" style="margin-bottom:6px;">
+    <div class="sh">Data Inputs</div>
+    <div></div>
+    <div class="sh" style="padding-left:14px;">LangGraph Agent Pipeline</div>
+    <div></div>
+    <div class="sh">Outputs</div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main">
+
+    <!-- Inputs -->
+    <div class="in-col">
+      <div class="in-card"><div class="t">Google Analytics 4</div><div class="s">OAuth 2.0 · live funnel data</div></div>
+      <div class="in-card"><div class="t">Amplitude</div><div class="s">API Key · behavioral events</div></div>
+      <div class="in-card"><div class="t">Mixpanel</div><div class="s">API Key · event streams</div></div>
+      <div class="in-card"><div class="t">CSV / Datasets</div><div class="s">Any schema · 4 pre-built</div></div>
+      <div style="flex:1; min-height:72px;"></div>
+      <div class="in-card raw"><div class="t">Assignment + Event Log</div><div class="s">Raw experiment results</div></div>
+    </div>
+
+    <!-- Left arrow col -->
+    <div style="position:relative;height:100%;" id="larr-col">
+      <svg id="larr-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;" preserveAspectRatio="none"></svg>
+    </div>
+
+    <!-- Agents -->
+    <div class="ag-col" id="ag-col">
+
+      <div class="agent" id="ag1">
+        <div class="agent-top">
+          <div class="agent-name">① Opportunity Agent</div>
+          <div class="badge">5 nodes · RAG</div>
+        </div>
+        <div class="nodes">
+          <div class="nd c">ingest_and_analyze</div><div class="arr">→</div>
+          <div class="nd">retrieve_context</div><div class="arr">→</div>
+          <div class="nd c">generate_candidates</div><div class="arr">→</div>
+          <div class="nd c">score_and_rank</div><div class="arr">→</div>
+          <div class="nd">build_report</div>
+        </div>
+        <div class="af">
+          <span class="af-model">→ <em>OpportunityReport</em> · ExperimentOpportunity[]</span>
+          <span class="af-state">OpportunityState TypedDict</span>
+        </div>
+      </div>
+
+      <div class="agent" id="ag2">
+        <div class="agent-top">
+          <div class="agent-name">② Framing Agent</div>
+          <div class="badge">4 nodes</div>
+        </div>
+        <div class="feed-note">Input: opportunity selected from Agent ① output</div>
+        <div class="nodes">
+          <div class="nd c">parse_hypothesis</div><div class="arr">→</div>
+          <div class="nd">retrieve_constraints</div><div class="arr">→</div>
+          <div class="nd c">design_experiment</div><div class="arr">→</div>
+          <div class="nd c">validate_design</div>
+        </div>
+        <div class="af">
+          <span class="af-model">→ <em>ExperimentDesign</em> · MDE · runtime · guardrails</span>
+          <span class="af-state">FramingState TypedDict</span>
+        </div>
+      </div>
+
+      <div class="agent" id="ag3">
+        <div class="agent-top">
+          <div class="agent-name">③ Monitoring Agent</div>
+          <div class="badge daily">● Automated · 06:00 EST daily</div>
+        </div>
+        <div class="feed-note">Input: running experiments fetched from GrowthBook / LaunchDarkly / Statsig</div>
+        <div class="nodes">
+          <div class="nd">fetch_data</div><div class="arr">→</div>
+          <div class="nd s">run_stat_checks</div><div class="arr">→</div>
+          <div class="nd c">synthesize_health</div>
+        </div>
+        <div class="af">
+          <span class="af-model">→ <em>MonitoringReport</em> · SRM · novelty · sequential</span>
+          <span class="af-state">MonitoringState TypedDict</span>
+        </div>
+      </div>
+
+      <div class="agent" id="ag4">
+        <div class="agent-top">
+          <div class="agent-name">④ Interpretation Agent</div>
+          <div class="badge">4 nodes</div>
+        </div>
+        <div class="nodes">
+          <div class="nd">fetch_results</div><div class="arr">→</div>
+          <div class="nd s">run_significance_tests</div><div class="arr">→</div>
+          <div class="nd c">interpret_with_claude</div><div class="arr">→</div>
+          <div class="nd">build_recommendation</div>
+        </div>
+        <div class="af">
+          <span class="af-model">→ <em>Recommendation</em> · Ship · Don't Ship · Run Longer</span>
+          <span class="af-state">InterpretationState TypedDict</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right arrow col -->
+    <div style="position:relative;height:100%;" id="rarr-col">
+      <svg id="rarr-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;" preserveAspectRatio="none"></svg>
+    </div>
+
+    <!-- Outputs -->
+    <div class="out-col" id="out-col">
+      <div class="out-card" id="o1"><div class="t">Ranked Opportunities</div><div class="s">hypothesis · lift estimate · evidence · segment_to_watch</div></div>
+      <div class="out-card" id="o2"><div class="t">Experiment Design</div><div class="s">MDE · runtime · guardrails · randomization unit → GrowthBook / LD / Statsig</div></div>
+      <div class="out-card amber" id="o3"><div class="t">Daily Email Report</div><div class="s">SendGrid · health per platform · SRM flags · stop signals</div></div>
+      <div class="out-card green" id="o4"><div class="t">Verdict + Narrative</div><div class="s">Ship / Don't Ship / Run Longer · confidence · risks · follow-up cuts</div></div>
+    </div>
+
+  </div>
+
+  <div class="v-connector-wrap">
+    <div class="v-connector"></div>
+    <div class="vc-label">all agents call ↓</div>
+  </div>
+
+  <div class="compute">
+    <div class="cc gold">
+      <div class="cc-title">Claude Sonnet · Stateless per Node</div>
+      <div class="chips">
+        <span class="chip c">Funnel analysis</span>
+        <span class="chip c">Segment analysis</span>
+        <span class="chip c">Candidate generation</span>
+        <span class="chip c">Score &amp; rank</span>
+        <span class="chip c">Hypothesis parsing</span>
+        <span class="chip c">Design validation</span>
+        <span class="chip c">Health synthesis</span>
+        <span class="chip c">Interpretation</span>
+      </div>
+    </div>
+    <div class="cc emerald">
+      <div class="cc-title">Stats Engine · NumPy + SciPy</div>
+      <div class="chips">
+        <span class="chip s">SRM · chi-square p&lt;.01</span>
+        <span class="chip s">Novelty detection</span>
+        <span class="chip s">Sequential · O'Brien-Fleming</span>
+        <span class="chip s">CUPED · OLS regression</span>
+        <span class="chip s">Two-proportion z-test</span>
+        <span class="chip s">Welch's t-test</span>
+        <span class="chip s">95% CI · relative lift</span>
+        <span class="chip s">Guardrail z-tests</span>
+      </div>
+    </div>
+    <div class="cc slate">
+      <div class="cc-title">Experiment Platforms</div>
+      <div class="chips">
+        <span class="chip gb">GrowthBook</span>
+        <span class="chip ld">LaunchDarkly API v2</span>
+        <span class="chip sg">Statsig</span>
+      </div>
+      <div class="platform-note">
+        <strong>Fernet-encrypted credentials</strong><br>
+        Docker named volume · persistent across restarts<br>
+        Per-user keyed by Clerk JWT user ID
+      </div>
+    </div>
+  </div>
+
+  <div class="infra">
+    <span class="infra-lbl">Infrastructure</span>
+    <span class="chip inf">FastAPI · Python 3.11</span>
+    <span class="chip inf">Next.js 14 · App Router</span>
+    <span class="chip inf">Clerk · JWT + JWKS</span>
+    <span class="chip inf">APScheduler · CronTrigger</span>
+    <span class="chip inf">SQLite · aiosqlite</span>
+    <span class="chip inf">Docker Compose</span>
+    <span class="chip inf">SimpleVectorStore · TF-IDF</span>
+    <span class="chip inf">SlowAPI · 10 req/min</span>
+    <span class="chip inf">BigQuery · metrics</span>
+    <span class="chip inf">SendGrid</span>
+    <span class="chip inf">MongoDB · GrowthBook</span>
+  </div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:rgba(245,158,11,.7);border:1px solid rgba(245,158,11,.4);"></div><span class="leg-txt">Claude Sonnet call</span></div>
+    <div class="leg"><div class="leg-dot" style="background:rgba(16,185,129,.7);border:1px solid rgba(16,185,129,.4);"></div><span class="leg-txt">Stats computation</span></div>
+    <div class="leg"><div class="leg-dot" style="background:rgba(71,85,105,.7);border:1px solid rgba(71,85,105,.5);"></div><span class="leg-txt">Data / assembly</span></div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  function drawArrows() {
+    var larrCol = document.getElementById('larr-col');
+    var larrSvg = document.getElementById('larr-svg');
+    var inCol   = document.querySelector('.in-col');
+    var ag1     = document.getElementById('ag1');
+    var ag4     = document.getElementById('ag4');
+    var rarrCol = document.getElementById('rarr-col');
+    var rarrSvg = document.getElementById('rarr-svg');
+    var outCol  = document.getElementById('out-col');
+
+    if (!larrCol || !larrSvg || !inCol || !ag1 || !ag4 || !rarrCol || !rarrSvg) return;
+
+    // ── Left arrows ──────────────────────────────────────
+    var lRect = larrCol.getBoundingClientRect();
+    var W = lRect.width, H = lRect.height;
+    larrSvg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    larrSvg.innerHTML = '';
+
+    function mkDef(svg, id, color) {
+      var m = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      m.setAttribute('id', id); m.setAttribute('markerWidth', '7'); m.setAttribute('markerHeight', '5');
+      m.setAttribute('refX', '7'); m.setAttribute('refY', '2.5'); m.setAttribute('orient', 'auto');
+      var p = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      p.setAttribute('points', '0 0, 7 2.5, 0 5'); p.setAttribute('fill', color);
+      m.appendChild(p);
+      return m;
+    }
+
+    var ldefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    ldefs.appendChild(mkDef(larrSvg, 'l-blue',   'rgba(99,102,241,.75)'));
+    ldefs.appendChild(mkDef(larrSvg, 'l-purple', 'rgba(139,92,246,.75)'));
+    larrSvg.appendChild(ldefs);
+
+    function relY(el, parentRect) {
+      var r = el.getBoundingClientRect();
+      return r.top - parentRect.top + r.height / 2;
+    }
+
+    function drawCurve(svg, x1, y1, x2, y2, color, markerId, dur) {
+      var cx1 = x1 + (x2 - x1) * 0.4, cy1 = y1;
+      var cx2 = x2 - (x2 - x1) * 0.4, cy2 = y2;
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M ' + x1 + ' ' + y1 + ' C ' + cx1 + ' ' + cy1 + ', ' + cx2 + ' ' + cy2 + ', ' + x2 + ' ' + y2);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-dasharray', '5 4');
+      path.setAttribute('marker-end', 'url(#' + markerId + ')');
+      var anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+      anim.setAttribute('attributeName', 'stroke-dashoffset');
+      anim.setAttribute('from', '18'); anim.setAttribute('to', '0');
+      anim.setAttribute('dur', dur + 's'); anim.setAttribute('repeatCount', 'indefinite');
+      path.appendChild(anim);
+      svg.appendChild(path);
+    }
+
+    var ag1Y  = relY(ag1, lRect);
+    var ag4Y  = relY(ag4, lRect);
+    var inCards = inCol.querySelectorAll('.in-card');
+
+    inCards.forEach(function (card, i) {
+      var cardY = relY(card, lRect);
+      if (i < 4) {
+        drawCurve(larrSvg, 0, cardY, W, ag1Y, 'rgba(99,102,241,.5)', 'l-blue', (1.3 + i * 0.12).toFixed(2));
+      } else {
+        drawCurve(larrSvg, 0, cardY, W, ag4Y, 'rgba(139,92,246,.55)', 'l-purple', '1.4');
+      }
+    });
+
+    // ── Right arrows ─────────────────────────────────────
+    var rRect = rarrCol.getBoundingClientRect();
+    var RW = rRect.width, RH = rRect.height;
+    rarrSvg.setAttribute('viewBox', '0 0 ' + RW + ' ' + RH);
+    rarrSvg.innerHTML = '';
+
+    var rdefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    rdefs.appendChild(mkDef(rarrSvg, 'r-v', 'rgba(139,92,246,.75)'));
+    rdefs.appendChild(mkDef(rarrSvg, 'r-a', 'rgba(245,158,11,.75)'));
+    rdefs.appendChild(mkDef(rarrSvg, 'r-g', 'rgba(16,185,129,.75)'));
+    rarrSvg.appendChild(rdefs);
+
+    var agents  = ['ag1', 'ag2', 'ag3', 'ag4'];
+    var outIds  = ['o1', 'o2', 'o3', 'o4'];
+    var colors  = ['rgba(139,92,246,.5)', 'rgba(139,92,246,.45)', 'rgba(245,158,11,.55)', 'rgba(16,185,129,.5)'];
+    var markers = ['r-v', 'r-v', 'r-a', 'r-g'];
+
+    agents.forEach(function (aid, i) {
+      var agEl  = document.getElementById(aid);
+      var outEl = document.getElementById(outIds[i]);
+      if (!agEl || !outEl) return;
+      var y1 = relY(agEl,  rRect);
+      var y2 = relY(outEl, rRect);
+      drawCurve(rarrSvg, 0, y1, RW, y2, colors[i], markers[i], (1.2 + i * 0.15).toFixed(2));
+    });
+  }
+
+  if (document.readyState === 'complete') { setTimeout(drawArrows, 100); }
+  else { window.addEventListener('load', function () { setTimeout(drawArrows, 100); }); }
+
+  var _rt;
+  window.addEventListener('resize', function () { clearTimeout(_rt); _rt = setTimeout(drawArrows, 120); });
+})();
+</script>
+</body>
+</html>

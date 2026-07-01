@@ -23,6 +23,7 @@ from api.health import router as health_router
 from api.interpretation import router as interpretation_router
 from api.monitoring import router as monitoring_router
 from api.opportunities import router as opportunities_router
+from api.reports import router as reports_router
 from api.start_experiment import router as start_experiment_router
 from middleware.auth import ClerkAuthMiddleware
 from middleware.logging import StructuredLoggingMiddleware, configure_logging
@@ -53,7 +54,12 @@ async def lifespan(app: FastAPI):
         STARTUP_LOG_MESSAGE,
         extra={"environment": app.state.environment},
     )
+    from services.db import init_db
+    from services.scheduler import start_scheduler, stop_scheduler
+    await init_db()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 def create_app() -> FastAPI:
@@ -107,6 +113,7 @@ def create_app() -> FastAPI:
     api_v1_router.include_router(analytics_router)
     api_v1_router.include_router(auth_google_router)
     api_v1_router.include_router(datasets_router)
+    api_v1_router.include_router(reports_router)
 
     app.include_router(api_v1_router)
     app.include_router(health_router, prefix=HEALTH_PREFIX)

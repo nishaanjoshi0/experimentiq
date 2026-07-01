@@ -10,22 +10,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
   }
 
+  const platform = request.nextUrl.searchParams.get("platform") ?? "growthbook";
   const body = await request.json();
-  const response = await fetch(
-    new URL(
-      "/api/v1/experiments/start",
-      process.env.FASTAPI_BASE_URL ?? DEFAULT_FASTAPI_BASE_URL
-    ),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    }
+  const upstreamUrl = new URL(
+    "/api/v1/experiments/start",
+    process.env.FASTAPI_BASE_URL ?? DEFAULT_FASTAPI_BASE_URL
   );
+  upstreamUrl.searchParams.set("platform", platform);
+  const response = await fetch(upstreamUrl.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
 
   const data = await response.json();
   return NextResponse.json(data, { status: response.status });

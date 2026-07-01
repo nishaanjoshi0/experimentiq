@@ -189,17 +189,17 @@ function DataSummaryPanel({ report }: { report: OpportunityReport }) {
         Data snapshot
       </h3>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {s.total_sessions && (
+        {!!s.total_sessions && (
           <Stat label="Sessions" value={Number(s.total_sessions).toLocaleString()} />
         )}
-        {crPct && <Stat label="Overall CVR" value={crPct} />}
-        {s.total_revenue && (
+        {!!crPct && <Stat label="Overall CVR" value={crPct} />}
+        {!!s.total_revenue && (
           <Stat
             label="Revenue"
             value={`$${Number(s.total_revenue).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
           />
         )}
-        {s.date_range && <Stat label="Period" value={String(s.date_range)} />}
+        {!!s.date_range && <Stat label="Period" value={String(s.date_range)} />}
       </div>
       {Array.isArray(s.top_insights) && s.top_insights.length > 0 && (
         <div className="mt-4 space-y-2">

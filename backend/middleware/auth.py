@@ -24,7 +24,8 @@ OAUTH_CALLBACK_PATH: Final[str] = "/api/v1/auth/google/callback"
 # Docs paths are only public in development. In production, FastAPI is configured
 # with docs_url=None/redoc_url=None/openapi_url=None so these paths return 404
 # before they ever reach the auth middleware — but we do not whitelist them here.
-PUBLIC_PATHS: Final[frozenset[str]] = frozenset({HEALTH_PATH, OAUTH_CALLBACK_PATH})
+ADMIN_SECRET_PATH: Final[str] = "/api/v1/reports/run-now"
+PUBLIC_PATHS: Final[frozenset[str]] = frozenset({HEALTH_PATH, OAUTH_CALLBACK_PATH, ADMIN_SECRET_PATH})
 JWKS_URL_ENV_VAR: Final[str] = "CLERK_JWKS_URL"
 CLERK_ISSUER_ENV_VAR: Final[str] = "CLERK_ISSUER_URL"
 JWKS_CACHE_TTL_SECONDS: Final[int] = 300

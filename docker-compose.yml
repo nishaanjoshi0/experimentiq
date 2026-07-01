@@ -1,4 +1,37 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dHJ1c3R5LWFraXRhLTc4LmNsZXJrLmFjY291bnRzLmRldiQ
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: /select
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: /select
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      - FASTAPI_BASE_URL=http://backend:8000
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - GROWTHBOOK_API_URL=http://growthbook:3100
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/bigquery/experimentiq-494001-25cbf363afaa.json
+    volumes:
+      - ./bigquery:/app/bigquery:ro
+      - credsdata:/app/data
+    depends_on:
+      - growthbook
+
   mongo:
     image: "mongo:latest"
     environment:
@@ -23,3 +56,4 @@ services:
 volumes:
   uploads:
   mongodata:
+  credsdata:

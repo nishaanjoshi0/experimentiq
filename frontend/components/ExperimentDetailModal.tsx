@@ -10,13 +10,26 @@ import {
   type StartExperimentResponse,
 } from "@/lib/api";
 
+interface ConnectedPlatforms {
+  growthbook?: boolean;
+  launchdarkly?: boolean;
+  statsig?: boolean;
+}
+
 interface ExperimentDetailModalProps {
   opportunity: ExperimentOpportunity;
-  ga4Connected: boolean;
+  ga4Connected?: boolean;
+  connectedPlatforms?: ConnectedPlatforms;
   onClose: () => void;
 }
 
 type ModalState = "overview" | "loading_design" | "design" | "starting" | "started" | "error";
+
+const PLATFORM_META: Record<string, { label: string; color: string }> = {
+  growthbook: { label: "GrowthBook", color: "var(--success)" },
+  launchdarkly: { label: "LaunchDarkly", color: "#405BFF" },
+  statsig: { label: "Statsig", color: "#EF6E23" },
+};
 
 const RISK_COLORS: Record<string, string> = {
   low: "text-[var(--success)] border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.08)]",
@@ -27,11 +40,13 @@ const RISK_COLORS: Record<string, string> = {
 export function ExperimentDetailModal({
   opportunity,
   ga4Connected,
+  connectedPlatforms = {},
   onClose,
 }: ExperimentDetailModalProps) {
   const [modalState, setModalState] = useState<ModalState>("overview");
   const [design, setDesign] = useState<ExperimentDesign | null>(null);
   const [started, setStarted] = useState<StartExperimentResponse | null>(null);
+  const [startingPlatform, setStartingPlatform] = useState<string>("growthbook");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,20 +67,24 @@ export function ExperimentDetailModal({
     }
   }
 
-  async function handleStartExperiment() {
+  async function handleStartExperiment(platform: string) {
     if (!design) return;
+    setStartingPlatform(platform);
     setModalState("starting");
     setError(null);
     try {
-      const result = await startExperiment({
-        name: opportunity.title,
-        hypothesis: design.hypothesis,
-        description: `Primary metric: ${design.primary_metric}. Est. runtime: ${design.estimated_runtime_days} days.`,
-      });
+      const result = await startExperiment(
+        {
+          name: opportunity.title,
+          hypothesis: design.hypothesis,
+          description: `Primary metric: ${design.primary_metric}. Est. runtime: ${design.estimated_runtime_days} days.`,
+        },
+        platform as import("@/lib/api").ExperimentPlatform
+      );
       setStarted(result);
       setModalState("started");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start experiment in GrowthBook.");
+      setError(e instanceof Error ? e.message : `Failed to start experiment in ${PLATFORM_META[platform]?.label ?? platform}.`);
       setModalState("error");
     }
   }
@@ -121,7 +140,7 @@ export function ExperimentDetailModal({
               opportunity={opportunity}
               design={design}
               riskClass={riskClass}
-              ga4Connected={ga4Connected}
+              connectedPlatforms={connectedPlatforms}
               onStart={handleStartExperiment}
               onBack={() => setModalState("overview")}
             />
@@ -131,7 +150,7 @@ export function ExperimentDetailModal({
             <div className="flex flex-col items-center gap-4 py-10 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--secondary)]" />
               <p className="text-sm text-[var(--text-muted)]">
-                Creating experiment in GrowthBook…
+                Creating experiment in {PLATFORM_META[startingPlatform]?.label ?? startingPlatform}…
               </p>
             </div>
           )}
@@ -143,19 +162,22 @@ export function ExperimentDetailModal({
               </div>
               <div className="space-y-2">
                 <p className="font-semibold text-[var(--text-primary)]">
-                  Experiment created in GrowthBook
+                  Experiment {started.platform === "statsig" ? "ready" : "created"} in {PLATFORM_META[started.platform]?.label ?? started.platform}
                 </p>
                 <p className="text-sm text-[var(--text-muted)]">
-                  "{started.name}" is ready to configure and launch.
+                  {started.platform === "statsig"
+                    ? `Open Statsig to finish setting up "${started.name}".`
+                    : `"${started.name}" is ready to configure and launch.`}
                 </p>
               </div>
               <a
-                href={started.growthbook_url}
+                href={started.platform_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-full bg-[var(--primary)] px-6 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
+                className="rounded-full px-6 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
+                style={{ background: PLATFORM_META[started.platform]?.color ?? "var(--primary)" }}
               >
-                Open in GrowthBook →
+                Open in {PLATFORM_META[started.platform]?.label ?? started.platform} →
               </a>
             </div>
           )}
@@ -232,18 +254,24 @@ function DesignPanel({
   opportunity,
   design,
   riskClass,
-  ga4Connected,
+  connectedPlatforms = {},
   onStart,
   onBack,
 }: {
   opportunity: ExperimentOpportunity;
   design: ExperimentDesign;
   riskClass: string;
-  ga4Connected: boolean;
-  onStart: () => void;
+  connectedPlatforms?: ConnectedPlatforms;
+  onStart: (platform: string) => void;
   onBack: () => void;
 }) {
   const confidencePct = Math.round(design.confidence * 100);
+
+  const platformButtons: Array<{ key: keyof ConnectedPlatforms; label: string; color: string }> = [
+    { key: "growthbook", label: "GrowthBook", color: "var(--success)" },
+    { key: "launchdarkly", label: "LaunchDarkly", color: "#405BFF" },
+    { key: "statsig", label: "Statsig", color: "#EF6E23" },
+  ];
 
   return (
     <div className="space-y-5">
@@ -310,26 +338,33 @@ function DesignPanel({
         </div>
       )}
 
-      <div className="pt-2">
-        <button
-          onClick={onStart}
-          disabled={!ga4Connected}
-          title={
-            ga4Connected
-              ? "Create this experiment in GrowthBook"
-              : "Connect an analytics platform to start experiments"
+      <div className="space-y-2 pt-2">
+        <p className="text-xs uppercase tracking-[0.12em] text-[var(--text-muted)]">Launch in</p>
+        {platformButtons.map(({ key, label, color }) => {
+          const connected = key === "growthbook" || !!connectedPlatforms[key];
+          if (connected) {
+            return (
+              <button
+                key={key}
+                onClick={() => onStart(key)}
+                className="w-full rounded-full py-3 text-sm font-medium text-white transition hover:brightness-110"
+                style={{ background: color }}
+              >
+                Start experiment in {label} →
+              </button>
+            );
           }
-          className="w-full rounded-full bg-[var(--primary)] py-3 text-sm font-medium text-white shadow-[0_0_20px_rgba(99,102,241,0.25)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {ga4Connected
-            ? "Start experiment in GrowthBook →"
-            : "Connect analytics to start experiment"}
-        </button>
-        {!ga4Connected && (
-          <p className="mt-2 text-center text-xs text-[var(--text-muted)]">
-            Analytics platform must be connected to launch experiments.
-          </p>
-        )}
+          return (
+            <a
+              key={key}
+              href="/experiments"
+              className="flex w-full items-center justify-between rounded-full border border-[var(--border)] px-5 py-3 text-sm text-[var(--text-muted)] transition hover:border-[rgba(255,255,255,0.2)] hover:text-[var(--text-primary)]"
+            >
+              <span>Connect {label} to launch here</span>
+              <span className="text-xs opacity-60">Set up →</span>
+            </a>
+          );
+        })}
       </div>
     </div>
   );

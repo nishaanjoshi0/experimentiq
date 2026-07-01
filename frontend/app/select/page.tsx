@@ -113,10 +113,10 @@ export default function SelectPage() {
           title="Connect your analytics platform"
           description="Link GA4 and pull live behavioral data directly. Recommendations are grounded in your real funnel, segments, and conversion gaps — not sample data."
           bullets={[
-            "Google Analytics 4 (live)",
-            "Mixpanel, Amplitude — coming soon",
+            "Google Analytics 4, Amplitude, Mixpanel (live)",
             "Real funnel + segment analysis",
-            "Start experiments directly in GrowthBook",
+            "Start experiments in GrowthBook, LaunchDarkly, or Statsig",
+            "Per-company platform connections",
           ]}
           cta="Connect analytics →"
           accent="cyan"

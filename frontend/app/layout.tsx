@@ -43,7 +43,10 @@ export default function RootLayout({
                     ExperimentIQ
                   </Link>
                   <div className="hidden items-center gap-6 text-sm text-[var(--text-muted)] md:flex">
-                    <Link href="/">Dashboard</Link>
+                    <Link href="/select">Home</Link>
+                    <Link href="/analytics">Analytics</Link>
+                    <Link href="/experiments">Experiments</Link>
+                    <Link href="/datasets">Datasets</Link>
                     <Link href="/experiments/new">Framing</Link>
                   </div>
                 </div>

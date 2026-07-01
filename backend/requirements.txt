@@ -1,4 +1,5 @@
 fastapi
+python-multipart
 uvicorn
 python-dotenv
 slowapi
@@ -13,3 +14,6 @@ anthropic
 numpy
 scipy
 pandas
+apscheduler
+aiosqlite
+sendgrid
