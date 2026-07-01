@@ -577,6 +577,6 @@ All implemented from scratch in `backend/services/stats.py` and `backend/service
 
 **Always show all three experiment platforms.** Whether connected or not, GrowthBook / LaunchDarkly / Statsig are always visible in the launch UI. Connected = solid action button. Disconnected = grey outline link to the connections page.
 
-**Fernet encryption for credential persistence.** In-memory stores wipe on restart. File-backed Fernet-encrypted JSON on a named Docker volume survives container recreations. The encryption key is stable via `OAUTH_ENCRYPTION_KEY` in `.env`.
+**Experiment platform links point to the list view, not the individual experiment.** Deep-linking to a specific experiment by key isn't reliably supported across platform environments. Linking to the experiments list is stable and puts the user one click from their experiment regardless of environment.
 
-**`.get("key") or "default"` over `.get("key", "default")`.** Python's default-value form returns the default only when the key is missing — not when the stored value is an empty string. API credentials stored as `""` would be silently passed as empty. The `or` pattern handles both cases.
+**Fernet encryption for credential persistence.** In-memory stores wipe on restart. File-backed Fernet-encrypted JSON on a named Docker volume survives container recreations. The encryption key is stable via `OAUTH_ENCRYPTION_KEY` in `.env`.
