@@ -2,12 +2,22 @@
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env.local
+frontend/.env
 
-# Service account keys (never commit these)
+# Service account keys — never commit these
 *service-account*.json
 *credentials*.json
 *serviceaccount*.json
 bigquery/*.json
+/creds.json
+
+# Credential + snapshot store (Docker named volume data, local dev fallback)
+/data/
+*.db
+*.db-shm
+*.db-wal
 
 # Python
 __pycache__/
@@ -20,6 +30,7 @@ venv/
 # Node
 node_modules/
 .next/
+*.tsbuildinfo
 npm-debug.log*
 
 # dbt
@@ -36,6 +47,15 @@ dbt/target/
 
 # Claude session files
 .claude/
+
+# Uploaded files and processing artifacts
+/uploads/
+/backend/uploads/
+/progress.json
+
+# Logs
+*.log
+/logs/
 
 # Temp files
 tmp/
